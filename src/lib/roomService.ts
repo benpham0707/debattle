@@ -11,10 +11,20 @@ const DEBATE_TOPICS = [
 ]
 
 export const roomService = {
+  // Helper to get current Supabase user ID
+  async getUserId(): Promise<string | null> {
+    const { data, error } = await supabase.auth.getUser()
+    if (error || !data?.user) {
+      return null
+    }
+    return data.user.id
+  },
+
   // Create a new room
   async createRoom(): Promise<Room | null> {
+    const userId = await this.getUserId()
     const randomTopic = DEBATE_TOPICS[Math.floor(Math.random() * DEBATE_TOPICS.length)]
-    
+
     const { data, error } = await supabase
       .from('rooms')
       .insert([
@@ -23,6 +33,7 @@ export const roomService = {
           status: 'waiting',
           player_a_health: 100,
           player_b_health: 100,
+          player_a_id: userId || null,
         }
       ])
       .select()
@@ -110,4 +121,4 @@ export const roomService = {
       )
       .subscribe()
   }
-} 
+}
