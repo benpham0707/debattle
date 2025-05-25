@@ -21,31 +21,36 @@ export const roomService = {
   },
 
   // Create a new room
-  async createRoom(): Promise<Room | null> {
-    const userId = await this.getUserId()
-    const randomTopic = DEBATE_TOPICS[Math.floor(Math.random() * DEBATE_TOPICS.length)]
+  // Create a new room
+// Simplified createRoom for MVP - remove player_a_name for now
+async createRoom(): Promise<Room | null> {
+  const userId = await this.getUserId()
+  const randomTopic = DEBATE_TOPICS[Math.floor(Math.random() * DEBATE_TOPICS.length)]
 
-    const { data, error } = await supabase
-      .from('rooms')
-      .insert([
-        {
-          topic: randomTopic,
-          status: 'waiting',
-          player_a_health: 100,
-          player_b_health: 100,
-          player_a_id: userId || null,
-        }
-      ])
-      .select()
-      .single()
+  const { data, error } = await supabase
+    .from('rooms')
+    .insert([
+      {
+        topic: randomTopic,
+        status: 'waiting',
+        player_a_health: 100,
+        player_b_health: 100,
+        player_a_id: userId || null,
+        // Remove these lines temporarily:
+        // player_a_name: userId ? null : (playerName || 'Guest Player'),
+        // player_b_name: null
+      }
+    ])
+    .select()
+    .single()
 
-    if (error) {
-      console.error('Error creating room:', error)
-      return null
-    }
+  if (error) {
+    console.error('Error creating room:', error)
+    return null
+  }
 
-    return data
-  },
+  return data
+},
 
   // Join an existing room
   async joinRoom(roomId: string, userId: string): Promise<Room | null> {

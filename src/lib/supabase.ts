@@ -20,18 +20,22 @@ export type Room = {
   topic: string
   player_a_id: string | null
   player_b_id: string | null
+  player_a_name: string | null  // ✅ ADD THIS
+  player_b_name: string | null  // ✅ ADD THIS
   player_a_side: 'pro' | 'con' | null
   player_b_side: 'pro' | 'con' | null
   player_a_health: number
   player_b_health: number
   current_phase: 'opening' | 'rebuttal' | 'crossfire' | 'final' | 'judging' | null
   winner_id: string | null
+  winner_name: string | null    // ✅ ADD THIS
 }
 
 export type Message = {
   id: string
   room_id: string
-  user_id: string
+  user_id: string | null        // ✅ CHANGE TO ALLOW NULL
+  sender_name: string           // ✅ ADD THIS
   content: string
   created_at: string
   phase: 'opening' | 'rebuttal' | 'crossfire' | 'final' | 'judging'
