@@ -16,18 +16,25 @@ export default function Home() {
       setIsCreating(true)
       setError(null)
       
+      console.log('🏗️ Creating new room...')
       const { room, playerRole } = await roomService.createRoom()
       
-      // Store player role in localStorage
+      // Store session information consistently
       const sessionKey = `debattle_session_${room.id}`
-      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      const sessionId = roomService.getSessionId() // Use the session ID from room service
       localStorage.setItem(sessionKey, sessionId)
       localStorage.setItem(`${sessionKey}_${playerRole}`, sessionId)
       
+      console.log('✅ Room created successfully:', {
+        roomId: room.id,
+        playerRole,
+        sessionId: sessionId.slice(-8)
+      })
+      
       router.push(`/room/${room.id}`)
     } catch (err) {
+      console.error('❌ Create room error:', err)
       setError('An error occurred while creating the room')
-      console.error(err)
     } finally {
       setIsCreating(false)
     }
@@ -44,20 +51,25 @@ export default function Home() {
       setIsJoining(true)
       setError(null)
       
-      console.log('Attempting to join room:', roomId.trim())
+      console.log('🚪 Attempting to join room:', roomId.trim())
       
       const { room, playerRole } = await roomService.joinRoom(roomId.trim())
       
-      // Store player role in localStorage
+      // Store session information consistently
       const sessionKey = `debattle_session_${room.id}`
-      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      const sessionId = roomService.getSessionId() // Use the session ID from room service
       localStorage.setItem(sessionKey, sessionId)
       localStorage.setItem(`${sessionKey}_${playerRole}`, sessionId)
       
-      console.log('Successfully joined as:', playerRole)
+      console.log('✅ Successfully joined room:', {
+        roomId: room.id,
+        playerRole,
+        sessionId: sessionId.slice(-8)
+      })
+      
       router.push(`/room/${room.id}`)
     } catch (err) {
-      console.error('Join room error:', err)
+      console.error('❌ Join room error:', err)
       if (err instanceof Error) {
         setError(`Failed to join room: ${err.message}`)
       } else {

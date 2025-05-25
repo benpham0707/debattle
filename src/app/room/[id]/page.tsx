@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Room } from '@/lib/supabase'
 import { roomService } from '@/lib/roomService'
@@ -17,11 +17,15 @@ export default function RoomPage() {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [isReadyingUp, setIsReadyingUp] = useState(false)
   const [isLeaving, setIsLeaving] = useState(false)
+  
+  // Use a ref to store the stable player role - this won't change once set
+  const stablePlayerRole = useRef<'player_a' | 'player_b' | 'spectator'>('spectator')
+  const hasJoinedAsPlayer = useRef(false)
 
   useEffect(() => {
     const roomId = params.id as string
     
-    // Generate or get session ID for guest identification
+    // Get session ID - this should be consistent for this browser session
     const getSessionId = () => {
       let id = localStorage.getItem(`debattle_session_${roomId}`)
       if (!id) {
@@ -35,65 +39,106 @@ export default function RoomPage() {
     const getCurrentUser = async () => {
       const userId = await roomService.getUserId()
       const sessionId = getSessionId()
-      setCurrentUserId(userId)
+      setCurrentUserId(userId || sessionId) // Use sessionId as fallback
       setSessionId(sessionId)
+      
+      console.log('🔑 User identification:', { userId, sessionId })
     }
     getCurrentUser()
     
     // Fetch initial room data
     const fetchRoom = async () => {
-      const roomData = await roomService.getRoom(roomId)
-      if (roomData) {
-        setRoom(roomData)
-        // Determine player role
-        determinePlayerRole(roomData)
-      } else {
-        setError('Room not found')
+      try {
+        const roomData = await roomService.getRoom(roomId)
+        if (roomData) {
+          setRoom(roomData)
+          
+          // Only determine role on initial load, not on updates
+          if (!hasJoinedAsPlayer.current) {
+            await determineInitialPlayerRole(roomData)
+          }
+        } else {
+          setError('Room not found')
+        }
+      } catch (err) {
+        console.error('Error fetching room:', err)
+        setError('Failed to load room')
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     }
 
     fetchRoom()
 
     // Subscribe to room updates
     const subscription = roomService.subscribeToRoom(roomId, (updatedRoom) => {
-      console.log('Room updated via subscription:', updatedRoom)
+      console.log('🔄 Room updated via subscription:', updatedRoom)
       setRoom(updatedRoom)
-      determinePlayerRole(updatedRoom)
+      
+      // Don't recalculate role on updates - keep the stable role
+      console.log('👤 Maintaining stable role:', stablePlayerRole.current)
     })
 
     return () => {
-      console.log('Unsubscribing from room updates')
+      console.log('🔌 Unsubscribing from room updates')
       subscription.unsubscribe()
     }
   }, [params.id])
 
-  const determinePlayerRole = (roomData: Room) => {
-    const sessionKey = `debattle_session_${params.id}`
+  const determineInitialPlayerRole = async (roomData: Room) => {
+    const roomId = params.id as string
+    const sessionKey = `debattle_session_${roomId}`
     const storedSessionId = localStorage.getItem(sessionKey)
     
-    // Check if this browser session created or joined as player A or B
+    // Check localStorage for existing role assignments
     const playerASession = localStorage.getItem(`${sessionKey}_player_a`)
     const playerBSession = localStorage.getItem(`${sessionKey}_player_b`)
     
-    console.log('Determining role with:', { 
-      storedSessionId, 
-      playerASession, 
+    console.log('🎭 Determining initial role:', {
+      storedSessionId,
+      playerASession,
       playerBSession,
       roomPlayerA: roomData.player_a_id,
       roomPlayerB: roomData.player_b_id
     })
     
+    let determinedRole: 'player_a' | 'player_b' | 'spectator' = 'spectator'
+    
+    // Check if this session matches an existing player assignment
     if (playerASession === storedSessionId && roomData.player_a_id) {
-      console.log('Setting role to player_a')
-      setPlayerRole('player_a')
+      determinedRole = 'player_a'
+      console.log('✅ Identified as Player A from localStorage')
     } else if (playerBSession === storedSessionId && roomData.player_b_id) {
-      console.log('Setting role to player_b')
-      setPlayerRole('player_b')
+      determinedRole = 'player_b'
+      console.log('✅ Identified as Player B from localStorage')
     } else {
-      console.log('Setting role to spectator')
-      setPlayerRole('spectator')
+      // Check if we can match by user ID
+      const userId = await roomService.getUserId()
+      const effectiveUserId = userId || storedSessionId
+      
+      console.log('🔍 Checking user ID match:', { effectiveUserId, roomPlayerA: roomData.player_a_id, roomPlayerB: roomData.player_b_id })
+      
+      if (roomData.player_a_id === effectiveUserId) {
+        determinedRole = 'player_a'
+        // Update localStorage to maintain consistency
+        localStorage.setItem(`${sessionKey}_player_a`, storedSessionId!)
+        console.log('✅ Matched as Player A by user ID')
+      } else if (roomData.player_b_id === effectiveUserId) {
+        determinedRole = 'player_b'
+        // Update localStorage to maintain consistency
+        localStorage.setItem(`${sessionKey}_player_b`, storedSessionId!)
+        console.log('✅ Matched as Player B by user ID')
+      } else {
+        console.log('👀 No match found - remaining as spectator')
+      }
     }
+    
+    // Set the role and mark it as stable
+    stablePlayerRole.current = determinedRole
+    setPlayerRole(determinedRole)
+    hasJoinedAsPlayer.current = determinedRole !== 'spectator'
+    
+    console.log('🎯 Final determined role:', determinedRole)
   }
 
   const copyRoomId = async () => {
@@ -107,13 +152,18 @@ export default function RoomPage() {
   }
 
   const handleReadyUp = async () => {
-    if (!room || playerRole === 'spectator') return
+    if (!room || stablePlayerRole.current === 'spectator') return
     
     try {
       setIsReadyingUp(true)
       setError(null)
       
-      const isCurrentlyReady = playerRole === 'player_a' ? room.player_a_ready : room.player_b_ready
+      const isCurrentlyReady = stablePlayerRole.current === 'player_a' ? room.player_a_ready : room.player_b_ready
+      
+      console.log('🚀 Ready up action:', {
+        playerRole: stablePlayerRole.current,
+        isCurrentlyReady
+      })
       
       if (isCurrentlyReady) {
         await roomService.unready(room.id)
@@ -121,6 +171,7 @@ export default function RoomPage() {
         await roomService.readyUp(room.id)
       }
     } catch (err) {
+      console.error('Ready up error:', err)
       setError(err instanceof Error ? err.message : 'Failed to ready up')
     } finally {
       setIsReadyingUp(false)
@@ -149,11 +200,6 @@ export default function RoomPage() {
     }
   }
 
-  // Remove this function completely - we don't need it anymore
-  // const handleJoinAsPlayer = async () => {
-  //   // This function is no longer needed since players auto-join when creating/joining rooms
-  // }
-
   const getPlayerStatus = (isPlayerA: boolean): string => {
     if (!room) return 'Waiting...'
     
@@ -167,7 +213,7 @@ export default function RoomPage() {
 
   const getPlayerLabel = (isPlayerA: boolean): string => {
     const baseLabel = isPlayerA ? 'Player A' : 'Player B'
-    if (playerRole === (isPlayerA ? 'player_a' : 'player_b')) {
+    if (stablePlayerRole.current === (isPlayerA ? 'player_a' : 'player_b')) {
       return `${baseLabel} (You)`
     }
     return baseLabel
@@ -200,11 +246,17 @@ export default function RoomPage() {
   const bothPlayersPresent = room.player_a_id && room.player_b_id
   const bothPlayersReady = room.player_a_ready && room.player_b_ready
   const gameStarted = room.status === 'debating'
-  // Removed canJoinAsPlayer since we auto-assign players
 
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-4xl mx-auto">
+        {/* Debug Info - Remove in production */}
+        <div className="bg-gray-900 border border-gray-700 rounded p-2 mb-4 text-xs font-mono">
+          <div>🎭 Role: {stablePlayerRole.current}</div>
+          <div>🔑 Session: {sessionId?.slice(-8)}</div>
+          <div>👤 A: {room.player_a_id?.slice(-8) || 'none'} | B: {room.player_b_id?.slice(-8) || 'none'}</div>
+        </div>
+
         {/* Room ID Section */}
         <div className="bg-gray-800 rounded-lg p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
@@ -216,7 +268,7 @@ export default function RoomPage() {
               >
                 {copied ? 'Copied!' : 'Copy ID'}
               </button>
-              {playerRole !== 'spectator' && (
+              {stablePlayerRole.current !== 'spectator' && (
                 <button
                   onClick={handleLeaveRoom}
                   className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm"
@@ -234,19 +286,16 @@ export default function RoomPage() {
           {/* Player Status Indicator */}
           <div className="mt-4 text-center">
             <div className={`inline-block px-4 py-2 rounded-lg font-semibold ${
-              playerRole === 'player_a' ? 'bg-blue-600' :
-              playerRole === 'player_b' ? 'bg-green-600' :
+              stablePlayerRole.current === 'player_a' ? 'bg-blue-600' :
+              stablePlayerRole.current === 'player_b' ? 'bg-green-600' :
               'bg-gray-600'
             }`}>
-              {playerRole === 'player_a' ? '🎮 You are Player A' :
-               playerRole === 'player_b' ? '🎮 You are Player B' :
+              {stablePlayerRole.current === 'player_a' ? '🎮 You are Player A' :
+               stablePlayerRole.current === 'player_b' ? '🎮 You are Player B' :
                '👀 You are Spectating'}
             </div>
           </div>
         </div>
-
-        {/* Join as Player Button - REMOVED */}
-        {/* Players are auto-assigned when creating/joining rooms */}
 
         {/* Game Status */}
         {gameStarted && (
@@ -270,7 +319,7 @@ export default function RoomPage() {
           
           <div className="grid grid-cols-2 gap-4 mb-6">
             <div className={`p-4 rounded-lg ${
-              playerRole === 'player_a' ? 'bg-blue-700 border-2 border-blue-400' : 'bg-gray-700'
+              stablePlayerRole.current === 'player_a' ? 'bg-blue-700 border-2 border-blue-400' : 'bg-gray-700'
             }`}>
               <h2 className="font-semibold mb-2">{getPlayerLabel(true)}</h2>
               <div className="text-sm text-gray-300 mb-2">
@@ -282,7 +331,7 @@ export default function RoomPage() {
             </div>
             
             <div className={`p-4 rounded-lg ${
-              playerRole === 'player_b' ? 'bg-green-700 border-2 border-green-400' : 'bg-gray-700'
+              stablePlayerRole.current === 'player_b' ? 'bg-green-700 border-2 border-green-400' : 'bg-gray-700'
             }`}>
               <h2 className="font-semibold mb-2">{getPlayerLabel(false)}</h2>
               <div className="text-sm text-gray-300 mb-2">
@@ -300,19 +349,19 @@ export default function RoomPage() {
             </div>
             
             {/* Ready Up Button */}
-            {!gameStarted && playerRole !== 'spectator' && bothPlayersPresent && (
+            {!gameStarted && stablePlayerRole.current !== 'spectator' && bothPlayersPresent && (
               <div className="mb-4">
                 <button
                   onClick={handleReadyUp}
                   className={`px-6 py-3 rounded-lg font-semibold text-lg transition-colors ${
-                    (playerRole === 'player_a' ? room.player_a_ready : room.player_b_ready)
+                    (stablePlayerRole.current === 'player_a' ? room.player_a_ready : room.player_b_ready)
                       ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
                       : 'bg-green-600 hover:bg-green-700 text-white'
                   }`}
                   disabled={isReadyingUp}
                 >
                   {isReadyingUp ? 'Loading...' : 
-                   (playerRole === 'player_a' ? room.player_a_ready : room.player_b_ready) ? 
+                   (stablePlayerRole.current === 'player_a' ? room.player_a_ready : room.player_b_ready) ? 
                    'UNREADY' : 'READY UP!'}
                 </button>
               </div>
