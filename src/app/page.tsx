@@ -16,12 +16,15 @@ export default function Home() {
       setIsCreating(true)
       setError(null)
       
-      const room = await roomService.createRoom()
-      if (room) {
-        router.push(`/room/${room.id}`)
-      } else {
-        setError('Failed to create room')
-      }
+      const { room, playerRole } = await roomService.createRoom()
+      
+      // Store player role in localStorage
+      const sessionKey = `debattle_session_${room.id}`
+      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      localStorage.setItem(sessionKey, sessionId)
+      localStorage.setItem(`${sessionKey}_${playerRole}`, sessionId)
+      
+      router.push(`/room/${room.id}`)
     } catch (err) {
       setError('An error occurred while creating the room')
       console.error(err)
@@ -43,15 +46,16 @@ export default function Home() {
       
       console.log('Attempting to join room:', roomId.trim())
       
-      // Let roomService handle UUID generation
-      const room = await roomService.joinRoom(roomId.trim())
+      const { room, playerRole } = await roomService.joinRoom(roomId.trim())
       
-      if (room) {
-        console.log('Successfully joined room:', room)
-        router.push(`/room/${room.id}`)
-      } else {
-        setError('Failed to join room - room may not exist')
-      }
+      // Store player role in localStorage
+      const sessionKey = `debattle_session_${room.id}`
+      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      localStorage.setItem(sessionKey, sessionId)
+      localStorage.setItem(`${sessionKey}_${playerRole}`, sessionId)
+      
+      console.log('Successfully joined as:', playerRole)
+      router.push(`/room/${room.id}`)
     } catch (err) {
       console.error('Join room error:', err)
       if (err instanceof Error) {

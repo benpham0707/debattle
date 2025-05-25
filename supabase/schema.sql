@@ -1,6 +1,9 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Enable realtime for the rooms table
+ALTER PUBLICATION supabase_realtime ADD TABLE rooms;
+
 -- USERS table
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -11,16 +14,18 @@ CREATE TABLE IF NOT EXISTS users (
     total_debates INTEGER DEFAULT 0
 );
 
--- ROOMS table
+-- ROOMS table with ready states
 CREATE TABLE IF NOT EXISTS rooms (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
-    status TEXT CHECK (status IN ('waiting', 'debating', 'finished')) DEFAULT 'waiting',
+    status TEXT CHECK (status IN ('waiting', 'ready_to_start', 'debating', 'finished')) DEFAULT 'waiting',
     topic TEXT NOT NULL,
     player_a_id UUID,  -- No foreign key (allows NULL for guests)
     player_b_id UUID,  -- No foreign key (allows NULL for guests)
     player_a_name TEXT, -- Store guest names directly
     player_b_name TEXT, -- Store guest names directly
+    player_a_ready BOOLEAN DEFAULT FALSE, -- Ready state for Player A
+    player_b_ready BOOLEAN DEFAULT FALSE, -- Ready state for Player B
     player_a_side TEXT CHECK (player_a_side IN ('pro', 'con')),
     player_b_side TEXT CHECK (player_b_side IN ('pro', 'con')),
     player_a_health INTEGER DEFAULT 100,
@@ -44,6 +49,8 @@ CREATE TABLE IF NOT EXISTS messages (
 
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_rooms_status ON rooms(status);
+CREATE INDEX IF NOT EXISTS idx_rooms_player_a ON rooms(player_a_id);
+CREATE INDEX IF NOT EXISTS idx_rooms_player_b ON rooms(player_b_id);
 CREATE INDEX IF NOT EXISTS idx_messages_room_id ON messages(room_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
 
@@ -56,3 +63,6 @@ ALTER TABLE messages DISABLE ROW LEVEL SECURITY;
 GRANT ALL ON users TO public;
 GRANT ALL ON rooms TO public;
 GRANT ALL ON messages TO public;
+
+-- Ensure realtime is enabled
+ALTER TABLE rooms REPLICA IDENTITY FULL;
