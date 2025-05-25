@@ -8,6 +8,7 @@ export default function Home() {
   const router = useRouter()
   const [roomId, setRoomId] = useState('')
   const [isCreating, setIsCreating] = useState(false)
+  const [isJoining, setIsJoining] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const handleCreateRoom = async () => {
@@ -31,26 +32,35 @@ export default function Home() {
 
   const handleJoinRoom = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!roomId.trim()) return
+    if (!roomId.trim()) {
+      setError('Please enter a room ID')
+      return
+    }
 
     try {
+      setIsJoining(true)
       setError(null)
-      // For MVP, we'll use a temporary user ID
-      const tempUserId = 'temp-user-' + Math.random().toString(36).substr(2, 9)
       
-      const room = await roomService.joinRoom(roomId, tempUserId)
+      console.log('Attempting to join room:', roomId.trim())
+      
+      // Let roomService handle UUID generation
+      const room = await roomService.joinRoom(roomId.trim())
+      
       if (room) {
+        console.log('Successfully joined room:', room)
         router.push(`/room/${room.id}`)
       } else {
-        setError('Failed to join room')
+        setError('Failed to join room - room may not exist')
       }
     } catch (err) {
+      console.error('Join room error:', err)
       if (err instanceof Error) {
-        setError(err.message)
+        setError(`Failed to join room: ${err.message}`)
       } else {
         setError('An error occurred while joining the room')
       }
-      console.error(err)
+    } finally {
+      setIsJoining(false)
     }
   }
 
@@ -103,9 +113,14 @@ export default function Home() {
                 onChange={(e) => setRoomId(e.target.value)}
                 placeholder="Enter Room ID"
                 className="input-field w-full"
+                disabled={isJoining}
               />
-              <button type="submit" className="btn-secondary w-full">
-                Join Room
+              <button 
+                type="submit" 
+                className="btn-secondary w-full"
+                disabled={isJoining || !roomId.trim()}
+              >
+                {isJoining ? 'Joining Room...' : 'Join Room'}
               </button>
             </form>
           </div>
@@ -113,4 +128,4 @@ export default function Home() {
       </div>
     </div>
   )
-} 
+}
