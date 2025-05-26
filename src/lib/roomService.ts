@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { Room } from './supabase'
+import { roleManager } from './roleManager'
 
 // List of debate topics for the MVP
 const DEBATE_TOPICS = [
@@ -30,9 +31,6 @@ function generateUUID(): string {
   })
 }
 
-// Store session ID globally for this browser session
-let currentSessionId: string | null = null
-
 export const roomService = {
   // Helper to get current Supabase user ID
   async getUserId(): Promise<string | null> {
@@ -43,31 +41,24 @@ export const roomService = {
     return data.user.id
   },
 
-  // Get or create session ID for this browser session
+  // Get session ID from role manager (ensures consistency)
   getSessionId(): string {
-    if (!currentSessionId) {
-      currentSessionId = generateUUID()
-      console.log('Generated new session ID:', currentSessionId)
-    }
-    return currentSessionId
+    return roleManager.getSessionId()
   },
 
   // Create a new room
   async createRoom(): Promise<{ room: Room; playerRole: 'player_a' | 'player_b' }> {
     let userId = await this.getUserId()
     
-    console.log('Original user ID:', userId)
+    console.log('🏗️ ROOM SERVICE - Creating room with user:', userId?.slice(-8))
     
     // If no authenticated user, use session UUID for guests
     if (!userId) {
       userId = this.getSessionId()
-      console.log('Using session UUID for room creator:', userId)
+      console.log('🎯 ROOM SERVICE - Using session UUID for creator:', userId.slice(-8))
     }
     
     const randomTopic = DEBATE_TOPICS[Math.floor(Math.random() * DEBATE_TOPICS.length)]
-
-    console.log('Creating room with user ID:', userId)
-    console.log('User ID type:', typeof userId, 'Length:', userId.length)
 
     const roomData = {
       topic: randomTopic,
@@ -79,7 +70,10 @@ export const roomService = {
       player_a_id: userId,
     }
     
-    console.log('Room data to insert:', roomData)
+    console.log('🏗️ ROOM SERVICE - Room data to insert:', {
+      ...roomData,
+      player_a_id: roomData.player_a_id.slice(-8)
+    })
 
     const { data, error } = await supabase
       .from('rooms')
@@ -88,11 +82,11 @@ export const roomService = {
       .single()
 
     if (error) {
-      console.error('Error creating room:', error)
+      console.error('❌ ROOM SERVICE - Error creating room:', error)
       throw new Error(`Failed to create room: ${error.message}`)
     }
 
-    console.log('Successfully created room:', data)
+    console.log('✅ ROOM SERVICE - Room created successfully')
     return { room: data, playerRole: 'player_a' }
   },
 
@@ -103,19 +97,21 @@ export const roomService = {
       let actualUserId = userId || await this.getUserId()
       if (!actualUserId) {
         actualUserId = this.getSessionId()
-        console.log('Using session UUID for room joiner:', actualUserId)
+        console.log('🎯 ROOM SERVICE - Using session UUID for joiner:', actualUserId.slice(-8))
       }
 
-      console.log('Join room attempt with user ID:', actualUserId)
-      console.log('User ID type:', typeof actualUserId, 'Length:', actualUserId.length)
+      console.log('🚪 ROOM SERVICE - Join attempt:', {
+        roomId: roomId.slice(-8),
+        userId: actualUserId.slice(-8)
+      })
 
       // Validate UUID format
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
       if (!uuidRegex.test(actualUserId)) {
-        console.error('Invalid UUID format:', actualUserId)
+        console.error('❌ ROOM SERVICE - Invalid UUID format:', actualUserId)
         // Generate a new proper UUID
         actualUserId = generateUUID()
-        console.log('Generated new UUID:', actualUserId)
+        console.log('🆕 ROOM SERVICE - Generated new UUID:', actualUserId.slice(-8))
       }
 
       // First, check if the room exists and get its current state
@@ -126,7 +122,7 @@ export const roomService = {
         .single()
 
       if (fetchError) {
-        console.error('Error fetching room:', fetchError)
+        console.error('❌ ROOM SERVICE - Error fetching room:', fetchError)
         if (fetchError.code === 'PGRST116') {
           throw new Error('Room not found')
         }
@@ -137,21 +133,21 @@ export const roomService = {
         throw new Error('Room not found')
       }
 
-      console.log('Current room state:', {
-        id: currentRoom.id,
-        player_a_id: currentRoom.player_a_id,
-        player_b_id: currentRoom.player_b_id,
+      console.log('🏠 ROOM SERVICE - Current room state:', {
+        id: currentRoom.id.slice(-8),
+        player_a_id: currentRoom.player_a_id?.slice(-8),
+        player_b_id: currentRoom.player_b_id?.slice(-8),
         status: currentRoom.status
       })
 
       // Check if user is already in the room
       if (currentRoom.player_a_id === actualUserId) {
-        console.log('User already in room as Player A')
+        console.log('✅ ROOM SERVICE - User already in room as Player A')
         return { room: currentRoom, playerRole: 'player_a' }
       }
       
       if (currentRoom.player_b_id === actualUserId) {
-        console.log('User already in room as Player B')
+        console.log('✅ ROOM SERVICE - User already in room as Player B')
         return { room: currentRoom, playerRole: 'player_b' }
       }
 
@@ -170,17 +166,15 @@ export const roomService = {
           player_a_ready: false
         }
         playerRole = 'player_a'
-        console.log('Joining as Player A')
+        console.log('🎭 ROOM SERVICE - Joining as Player A')
       } else {
         updateData = { 
           player_b_id: actualUserId,
           player_b_ready: false
         }
         playerRole = 'player_b'
-        console.log('Joining as Player B')
+        console.log('🎭 ROOM SERVICE - Joining as Player B')
       }
-
-      console.log('Update data:', updateData)
 
       // Update the room
       const { data: updatedRoom, error: updateError } = await supabase
@@ -191,7 +185,7 @@ export const roomService = {
         .single()
 
       if (updateError) {
-        console.error('Error updating room:', updateError)
+        console.error('❌ ROOM SERVICE - Error updating room:', updateError)
         throw new Error(`Failed to join room: ${updateError.message}`)
       }
 
@@ -199,44 +193,91 @@ export const roomService = {
         throw new Error('Failed to update room - no data returned')
       }
 
-      console.log('Successfully joined room as:', playerRole)
-      console.log('Updated room:', updatedRoom)
-
+      console.log('✅ ROOM SERVICE - Successfully joined as:', playerRole)
       return { room: updatedRoom, playerRole }
 
     } catch (error) {
-      console.error('Join room error:', error)
+      console.error('❌ ROOM SERVICE - Join room error:', error)
       throw error
     }
   },
 
-  // Start side selection phase
-  async startSideSelection(roomId: string): Promise<Room | null> {
+  // Ready up for the game
+  async readyUp(roomId: string): Promise<Room | null> {
     try {
-      const deadline = new Date(Date.now() + 10000) // 10 seconds from now
+      // Get user ID from role manager for consistency
+      let userId = await this.getUserId()
+      if (!userId) {
+        userId = this.getSessionId()
+      }
       
-      const { data, error } = await supabase
+      console.log('🚀 ROOM SERVICE - Ready up with user:', userId.slice(-8))
+      
+      // Get current room state
+      const { data: room, error: fetchError } = await supabase
         .from('rooms')
-        .update({
-          status: 'side_selection',
-          current_phase: 'side_selection',
-          side_selection_deadline: deadline.toISOString(),
-          phase_start_time: new Date().toISOString(),
-          phase_duration: 10
+        .select('*')
+        .eq('id', roomId)
+        .single()
+
+      if (fetchError || !room) {
+        console.error('❌ ROOM SERVICE - Error fetching room for ready up:', fetchError)
+        throw new Error('Room not found')
+      }
+
+      // Determine which player is ready-ing up
+      let updateData: any = {}
+      
+      if (room.player_a_id === userId) {
+        updateData.player_a_ready = true
+        console.log('🅰️ ROOM SERVICE - Player A readying up')
+      } else if (room.player_b_id === userId) {
+        updateData.player_b_ready = true
+        console.log('🅱️ ROOM SERVICE - Player B readying up')
+      } else {
+        console.error('❌ ROOM SERVICE - User not found in room:', {
+          userId: userId.slice(-8),
+          roomPlayerA: room.player_a_id?.slice(-8),
+          roomPlayerB: room.player_b_id?.slice(-8)
         })
+        throw new Error('You are not in this room')
+      }
+
+      // Check if both players will be ready after this update
+      const bothReady = (room.player_a_id === userId ? true : room.player_a_ready) && 
+                       (room.player_b_id === userId ? true : room.player_b_ready)
+
+      console.log('✅ ROOM SERVICE - Both players ready after update:', bothReady)
+
+      // If both players are ready and present, start side selection
+      if (bothReady && room.player_a_id && room.player_b_id) {
+        // Start side selection phase instead of going straight to debating
+        const deadline = new Date(Date.now() + 10000) // 10 seconds from now
+        updateData.status = 'side_selection'
+        updateData.current_phase = 'side_selection'
+        updateData.side_selection_deadline = deadline.toISOString()
+        updateData.phase_start_time = new Date().toISOString()
+        updateData.phase_duration = 10
+        console.log('🎯 ROOM SERVICE - Starting side selection phase')
+      }
+
+      // Update the room
+      const { data, error: updateError } = await supabase
+        .from('rooms')
+        .update(updateData)
         .eq('id', roomId)
         .select()
         .single()
 
-      if (error) {
-        console.error('Error starting side selection:', error)
-        throw new Error(`Failed to start side selection: ${error.message}`)
+      if (updateError) {
+        console.error('❌ ROOM SERVICE - Error readying up:', updateError)
+        throw new Error(`Failed to ready up: ${updateError.message}`)
       }
 
-      console.log('✅ Side selection started')
+      console.log('✅ ROOM SERVICE - Successfully readied up')
       return data
     } catch (error) {
-      console.error('Start side selection error:', error)
+      console.error('❌ ROOM SERVICE - Ready up error:', error)
       throw error
     }
   },
@@ -248,6 +289,12 @@ export const roomService = {
       if (!userId) {
         userId = this.getSessionId()
       }
+
+      console.log('🗳️ ROOM SERVICE - Submitting vote:', {
+        userId: userId.slice(-8),
+        side,
+        roomId: roomId.slice(-8)
+      })
 
       // Get current room to determine player role
       const { data: room, error: fetchError } = await supabase
@@ -264,11 +311,16 @@ export const roomService = {
       
       if (room.player_a_id === userId) {
         updateData.player_a_side_vote = side
-        console.log('Player A voted for:', side)
+        console.log('🅰️ ROOM SERVICE - Player A voted for:', side)
       } else if (room.player_b_id === userId) {
         updateData.player_b_side_vote = side
-        console.log('Player B voted for:', side)
+        console.log('🅱️ ROOM SERVICE - Player B voted for:', side)
       } else {
+        console.error('❌ ROOM SERVICE - User not in room for voting:', {
+          userId: userId.slice(-8),
+          roomPlayerA: room.player_a_id?.slice(-8),
+          roomPlayerB: room.player_b_id?.slice(-8)
+        })
         throw new Error('You are not in this room')
       }
 
@@ -281,13 +333,14 @@ export const roomService = {
         .single()
 
       if (updateError) {
-        console.error('Error submitting vote:', updateError)
+        console.error('❌ ROOM SERVICE - Error submitting vote:', updateError)
         throw new Error(`Failed to submit vote: ${updateError.message}`)
       }
 
+      console.log('✅ ROOM SERVICE - Vote submitted successfully')
       return data
     } catch (error) {
-      console.error('Submit side vote error:', error)
+      console.error('❌ ROOM SERVICE - Submit side vote error:', error)
       throw error
     }
   },
@@ -308,7 +361,12 @@ export const roomService = {
       let playerASide: 'pro' | 'con'
       let playerBSide: 'pro' | 'con'
 
-      // Apply your logic for side assignment
+      console.log('🎯 ROOM SERVICE - Finalizing side selection:', {
+        playerAVote: room.player_a_side_vote,
+        playerBVote: room.player_b_side_vote
+      })
+
+      // Apply side assignment logic
       if (room.player_a_side_vote && room.player_b_side_vote) {
         if (room.player_a_side_vote === room.player_b_side_vote) {
           // Both chose same side - random assignment
@@ -319,19 +377,23 @@ export const roomService = {
             playerASide = 'con'
             playerBSide = 'pro'
           }
+          console.log('🎲 ROOM SERVICE - Random assignment (both chose same side)')
         } else {
           // Different sides - honor their choices
           playerASide = room.player_a_side_vote
           playerBSide = room.player_b_side_vote
+          console.log('✅ ROOM SERVICE - Honored different choices')
         }
       } else if (room.player_a_side_vote && !room.player_b_side_vote) {
         // Only A voted - A gets choice, B gets opposite
         playerASide = room.player_a_side_vote
         playerBSide = room.player_a_side_vote === 'pro' ? 'con' : 'pro'
+        console.log('🅰️ ROOM SERVICE - Only Player A voted')
       } else if (!room.player_a_side_vote && room.player_b_side_vote) {
         // Only B voted - B gets choice, A gets opposite
         playerBSide = room.player_b_side_vote
         playerASide = room.player_b_side_vote === 'pro' ? 'con' : 'pro'
+        console.log('🅱️ ROOM SERVICE - Only Player B voted')
       } else {
         // Nobody voted - random assignment
         if (Math.random() > 0.5) {
@@ -341,9 +403,10 @@ export const roomService = {
           playerASide = 'con'
           playerBSide = 'pro'
         }
+        console.log('🎲 ROOM SERVICE - Random assignment (no votes)')
       }
 
-      console.log('Final side assignments:', { playerASide, playerBSide })
+      console.log('🎯 ROOM SERVICE - Final side assignments:', { playerASide, playerBSide })
 
       // Update room with final assignments and move to opening prep phase
       const { data, error: updateError } = await supabase
@@ -360,98 +423,14 @@ export const roomService = {
         .single()
 
       if (updateError) {
-        console.error('Error finalizing side selection:', updateError)
+        console.error('❌ ROOM SERVICE - Error finalizing side selection:', updateError)
         throw new Error(`Failed to finalize sides: ${updateError.message}`)
       }
 
+      console.log('✅ ROOM SERVICE - Side selection finalized')
       return data
     } catch (error) {
-      console.error('Finalize side selection error:', error)
-      throw error
-    }
-  },
-
-  // Ready up for the game
-  async readyUp(roomId: string): Promise<Room | null> {
-    try {
-      let userId = await this.getUserId()
-      if (!userId) {
-        userId = this.getSessionId()
-      }
-      
-      console.log('Ready up with user ID:', userId)
-      
-      // Get current room state
-      const { data: room, error: fetchError } = await supabase
-        .from('rooms')
-        .select('*')
-        .eq('id', roomId)
-        .single()
-
-      if (fetchError || !room) {
-        console.error('Error fetching room for ready up:', fetchError)
-        throw new Error('Room not found')
-      }
-
-      console.log('Current room for ready up:', {
-        player_a_id: room.player_a_id,
-        player_b_id: room.player_b_id,
-        player_a_ready: room.player_a_ready,
-        player_b_ready: room.player_b_ready
-      })
-
-      // Determine which player is ready-ing up
-      let updateData: any = {}
-      
-      if (room.player_a_id === userId) {
-        updateData.player_a_ready = true
-        console.log('Player A readying up')
-      } else if (room.player_b_id === userId) {
-        updateData.player_b_ready = true
-        console.log('Player B readying up')
-      } else {
-        console.error('User not found in room')
-        console.error('Room player A ID:', room.player_a_id)
-        console.error('Room player B ID:', room.player_b_id)
-        console.error('Current user ID:', userId)
-        throw new Error('You are not in this room')
-      }
-
-      // Check if both players will be ready after this update
-      const bothReady = (room.player_a_id === userId ? true : room.player_a_ready) && 
-                       (room.player_b_id === userId ? true : room.player_b_ready)
-
-      console.log('Both players ready after update:', bothReady)
-
-      // If both players are ready and present, start side selection
-      if (bothReady && room.player_a_id && room.player_b_id) {
-        // Start side selection phase instead of going straight to debating
-        const deadline = new Date(Date.now() + 10000) // 10 seconds from now
-        updateData.status = 'side_selection'
-        updateData.current_phase = 'side_selection'
-        updateData.side_selection_deadline = deadline.toISOString()
-        updateData.phase_start_time = new Date().toISOString()
-        updateData.phase_duration = 10
-        console.log('Starting side selection phase')
-      }
-
-      // Update the room
-      const { data, error: updateError } = await supabase
-        .from('rooms')
-        .update(updateData)
-        .eq('id', roomId)
-        .select()
-        .single()
-
-      if (updateError) {
-        console.error('Error readying up:', updateError)
-        throw new Error(`Failed to ready up: ${updateError.message}`)
-      }
-
-      console.log('Successfully readied up')
-      return data
-    } catch (error) {
-      console.error('Ready up error:', error)
+      console.error('❌ ROOM SERVICE - Finalize side selection error:', error)
       throw error
     }
   },
@@ -478,8 +457,10 @@ export const roomService = {
       
       if (room.player_a_id === userId) {
         updateData.player_a_ready = false
+        console.log('🅰️ ROOM SERVICE - Player A unreadying')
       } else if (room.player_b_id === userId) {
         updateData.player_b_ready = false
+        console.log('🅱️ ROOM SERVICE - Player B unreadying')
       } else {
         throw new Error('You are not in this room')
       }
@@ -496,13 +477,14 @@ export const roomService = {
         .single()
 
       if (updateError) {
-        console.error('Error unreadying:', updateError)
+        console.error('❌ ROOM SERVICE - Error unreadying:', updateError)
         throw new Error(`Failed to unready: ${updateError.message}`)
       }
 
+      console.log('✅ ROOM SERVICE - Successfully unreadied')
       return data
     } catch (error) {
-      console.error('Unready error:', error)
+      console.error('❌ ROOM SERVICE - Unready error:', error)
       throw error
     }
   },
@@ -514,6 +496,11 @@ export const roomService = {
       if (!userId) {
         userId = this.getSessionId()
       }
+
+      console.log('🚪 ROOM SERVICE - Leaving room:', {
+        roomId: roomId.slice(-8),
+        userId: userId.slice(-8)
+      })
       
       const { data: room, error: fetchError } = await supabase
         .from('rooms')
@@ -532,11 +519,13 @@ export const roomService = {
         updateData.player_a_ready = false
         updateData.player_a_side_vote = null
         updateData.player_a_side = null
+        console.log('🅰️ ROOM SERVICE - Player A leaving')
       } else if (room.player_b_id === userId) {
         updateData.player_b_id = null
         updateData.player_b_ready = false
         updateData.player_b_side_vote = null
         updateData.player_b_side = null
+        console.log('🅱️ ROOM SERVICE - Player B leaving')
       } else {
         throw new Error('You are not in this room')
       }
@@ -551,13 +540,14 @@ export const roomService = {
         .eq('id', roomId)
 
       if (updateError) {
-        console.error('Error leaving room:', updateError)
+        console.error('❌ ROOM SERVICE - Error leaving room:', updateError)
         throw new Error(`Failed to leave room: ${updateError.message}`)
       }
 
+      console.log('✅ ROOM SERVICE - Successfully left room')
       return true
     } catch (error) {
-      console.error('Leave room error:', error)
+      console.error('❌ ROOM SERVICE - Leave room error:', error)
       throw error
     }
   },
@@ -572,16 +562,16 @@ export const roomService = {
         .single()
 
       if (error) {
-        console.error('Error fetching room:', error)
         if (error.code === 'PGRST116') {
           return null // Room not found
         }
+        console.error('❌ ROOM SERVICE - Error fetching room:', error)
         throw error
       }
 
       return data
     } catch (error) {
-      console.error('Get room error:', error)
+      console.error('❌ ROOM SERVICE - Get room error:', error)
       return null
     }
   },
@@ -589,7 +579,7 @@ export const roomService = {
   // Start opening prep phase
   async startOpeningPrep(roomId: string): Promise<Room | null> {
     try {
-      console.log('🎯 Starting opening prep phase for room:', roomId)
+      console.log('📝 ROOM SERVICE - Starting opening prep phase for room:', roomId.slice(-8))
       
       const { data, error } = await supabase
         .from('rooms')
@@ -603,14 +593,14 @@ export const roomService = {
         .single()
 
       if (error) {
-        console.error('Error starting opening prep:', error)
+        console.error('❌ ROOM SERVICE - Error starting opening prep:', error)
         throw new Error(`Failed to start opening prep: ${error.message}`)
       }
 
-      console.log('✅ Opening prep started successfully:', data)
+      console.log('✅ ROOM SERVICE - Opening prep started successfully')
       return data
     } catch (error) {
-      console.error('Start opening prep error:', error)
+      console.error('❌ ROOM SERVICE - Start opening prep error:', error)
       throw error
     }
   },
@@ -618,7 +608,7 @@ export const roomService = {
   // Start opening statements phase
   async startOpeningStatements(roomId: string): Promise<Room | null> {
     try {
-      console.log('🎯 Starting opening statements for room:', roomId)
+      console.log('🎤 ROOM SERVICE - Starting opening statements for room:', roomId.slice(-8))
       
       const { data, error } = await supabase
         .from('rooms')
@@ -632,20 +622,22 @@ export const roomService = {
         .single()
 
       if (error) {
-        console.error('Error starting opening statements:', error)
+        console.error('❌ ROOM SERVICE - Error starting opening statements:', error)
         throw new Error(`Failed to start opening statements: ${error.message}`)
       }
 
-      console.log('✅ Opening statements started successfully:', data)
+      console.log('✅ ROOM SERVICE - Opening statements started successfully')
       return data
     } catch (error) {
-      console.error('Start opening statements error:', error)
+      console.error('❌ ROOM SERVICE - Start opening statements error:', error)
       throw error
     }
   },
+
+  // Start game with side selection
   async startGameWithSideSelection(roomId: string): Promise<Room | null> {
     try {
-      console.log('🎯 Starting game with side selection for room:', roomId)
+      console.log('🎮 ROOM SERVICE - Starting game with side selection for room:', roomId.slice(-8))
       
       const deadline = new Date(Date.now() + 10000) // 10 seconds from now
       
@@ -663,21 +655,21 @@ export const roomService = {
         .single()
 
       if (error) {
-        console.error('Error starting game with side selection:', error)
+        console.error('❌ ROOM SERVICE - Error starting game with side selection:', error)
         throw new Error(`Failed to start game: ${error.message}`)
       }
 
-      console.log('✅ Game started with side selection successfully:', data)
+      console.log('✅ ROOM SERVICE - Game started with side selection successfully')
       return data
     } catch (error) {
-      console.error('Start game with side selection error:', error)
+      console.error('❌ ROOM SERVICE - Start game with side selection error:', error)
       throw error
     }
   },
 
   // Enhanced subscription with better error handling
   subscribeToRoom(roomId: string, callback: (room: Room) => void) {
-    console.log('Setting up subscription for room:', roomId)
+    console.log('📡 ROOM SERVICE - Setting up subscription for room:', roomId.slice(-8))
     
     const channel = supabase
       .channel(`room:${roomId}:${Date.now()}`)
@@ -690,10 +682,10 @@ export const roomService = {
           filter: `id=eq.${roomId}`,
         },
         (payload: any) => {
-          console.log('🔄 Real-time update received:', {
+          console.log('🔄 ROOM SERVICE - Real-time update received:', {
             event: payload.eventType,
             new: payload.new ? {
-              id: payload.new.id,
+              id: payload.new.id.slice(-8),
               player_a_id: payload.new.player_a_id ? payload.new.player_a_id.slice(-8) : null,
               player_b_id: payload.new.player_b_id ? payload.new.player_b_id.slice(-8) : null,
               status: payload.new.status,
@@ -707,13 +699,13 @@ export const roomService = {
         }
       )
       .subscribe((status: string, error?: Error) => {
-        console.log('Subscription status:', status)
+        console.log('📡 ROOM SERVICE - Subscription status:', status)
         if (error) {
-          console.error('Subscription error:', error)
+          console.error('❌ ROOM SERVICE - Subscription error:', error)
         }
         
         if (status === 'SUBSCRIBED') {
-          console.log('✅ Successfully subscribed to room updates')
+          console.log('✅ ROOM SERVICE - Successfully subscribed to room updates')
         }
       })
 

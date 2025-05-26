@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Room } from '@/lib/supabase'
 import { roomService } from '@/lib/roomService'
+import { roleManager, PlayerSession } from '@/lib/roleManager'
 
 export default function RoomPage() {
   const params = useParams()
@@ -12,9 +13,7 @@ export default function RoomPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [playerRole, setPlayerRole] = useState<'player_a' | 'player_b' | 'spectator'>('spectator')
-  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [playerSession, setPlayerSession] = useState<PlayerSession | null>(null)
   const [isReadyingUp, setIsReadyingUp] = useState(false)
   const [isLeaving, setIsLeaving] = useState(false)
   
@@ -22,34 +21,11 @@ export default function RoomPage() {
   const [countdown, setCountdown] = useState<number | null>(null)
   const [isCountingDown, setIsCountingDown] = useState(false)
   
-  // Use a ref to store the stable player role - this won't change once set
-  const stablePlayerRole = useRef<'player_a' | 'player_b' | 'spectator'>('spectator')
-  const hasJoinedAsPlayer = useRef(false)
   const countdownInterval = useRef<NodeJS.Timeout | null>(null)
+  const roleInitialized = useRef(false)
 
   useEffect(() => {
     const roomId = params.id as string
-    
-    // Get session ID - this should be consistent for this browser session
-    const getSessionId = () => {
-      let id = localStorage.getItem(`debattle_session_${roomId}`)
-      if (!id) {
-        id = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-        localStorage.setItem(`debattle_session_${roomId}`, id)
-      }
-      return id
-    }
-    
-    // Get current user ID and session
-    const getCurrentUser = async () => {
-      const userId = await roomService.getUserId()
-      const sessionId = getSessionId()
-      setCurrentUserId(userId || sessionId) // Use sessionId as fallback
-      setSessionId(sessionId)
-      
-      console.log('🔑 User identification:', { userId, sessionId })
-    }
-    getCurrentUser()
     
     // Fetch initial room data
     const fetchRoom = async () => {
@@ -58,9 +34,17 @@ export default function RoomPage() {
         if (roomData) {
           setRoom(roomData)
           
-          // Only determine role on initial load, not on updates
-          if (!hasJoinedAsPlayer.current) {
-            await determineInitialPlayerRole(roomData)
+          // Initialize role using the new role manager (only once)
+          if (!roleInitialized.current) {
+            const session = await roleManager.initializeRole(roomId, roomData)
+            setPlayerSession(session)
+            roleInitialized.current = true
+            
+            console.log('🎭 ROOM PAGE - Role initialized:', {
+              role: session.playerRole,
+              sessionId: session.sessionId.slice(-8),
+              isLocked: session.isLocked
+            })
           }
         } else {
           setError('Room not found')
@@ -77,11 +61,19 @@ export default function RoomPage() {
 
     // Subscribe to room updates
     const subscription = roomService.subscribeToRoom(roomId, (updatedRoom) => {
-      console.log('🔄 Room updated via subscription:', updatedRoom)
+      console.log('🔄 ROOM PAGE - Room updated:', {
+        status: updatedRoom.status,
+        playerA: updatedRoom.player_a_id?.slice(-8),
+        playerB: updatedRoom.player_b_id?.slice(-8)
+      })
+      
       setRoom(updatedRoom)
       
-      // Don't recalculate role on updates - keep the stable role
-      console.log('👤 Maintaining stable role:', stablePlayerRole.current)
+      // CRITICAL: Never recalculate role on updates - role is locked once initialized
+      const currentSession = roleManager.getCurrentSession()
+      if (currentSession) {
+        console.log('🔒 ROOM PAGE - Maintaining locked role:', currentSession.playerRole)
+      }
     })
 
     return () => {
@@ -121,9 +113,15 @@ export default function RoomPage() {
     // Navigate to game when status changes to debating
     if (room.status === 'debating' && countdown === null && !isCountingDown) {
       console.log('🎮 Game started! Navigating to game page...')
+      
+      // Lock the role before navigating to game
+      if (playerSession) {
+        roleManager.lockRole(room.id)
+      }
+      
       router.push(`/game/${room.id}`)
     }
-  }, [room, isCountingDown, countdown, router])
+  }, [room, isCountingDown, countdown, router, playerSession])
 
   const startCountdown = () => {
     setIsCountingDown(true)
@@ -160,62 +158,6 @@ export default function RoomPage() {
     }
   }
 
-  const determineInitialPlayerRole = async (roomData: Room) => {
-    const roomId = params.id as string
-    const sessionKey = `debattle_session_${roomId}`
-    const storedSessionId = localStorage.getItem(sessionKey)
-    
-    // Check localStorage for existing role assignments
-    const playerASession = localStorage.getItem(`${sessionKey}_player_a`)
-    const playerBSession = localStorage.getItem(`${sessionKey}_player_b`)
-    
-    console.log('🎭 Determining initial role:', {
-      storedSessionId,
-      playerASession,
-      playerBSession,
-      roomPlayerA: roomData.player_a_id,
-      roomPlayerB: roomData.player_b_id
-    })
-    
-    let determinedRole: 'player_a' | 'player_b' | 'spectator' = 'spectator'
-    
-    // Check if this session matches an existing player assignment
-    if (playerASession === storedSessionId && roomData.player_a_id) {
-      determinedRole = 'player_a'
-      console.log('✅ Identified as Player A from localStorage')
-    } else if (playerBSession === storedSessionId && roomData.player_b_id) {
-      determinedRole = 'player_b'
-      console.log('✅ Identified as Player B from localStorage')
-    } else {
-      // Check if we can match by user ID
-      const userId = await roomService.getUserId()
-      const effectiveUserId = userId || storedSessionId
-      
-      console.log('🔍 Checking user ID match:', { effectiveUserId, roomPlayerA: roomData.player_a_id, roomPlayerB: roomData.player_b_id })
-      
-      if (roomData.player_a_id === effectiveUserId) {
-        determinedRole = 'player_a'
-        // Update localStorage to maintain consistency
-        localStorage.setItem(`${sessionKey}_player_a`, storedSessionId!)
-        console.log('✅ Matched as Player A by user ID')
-      } else if (roomData.player_b_id === effectiveUserId) {
-        determinedRole = 'player_b'
-        // Update localStorage to maintain consistency
-        localStorage.setItem(`${sessionKey}_player_b`, storedSessionId!)
-        console.log('✅ Matched as Player B by user ID')
-      } else {
-        console.log('👀 No match found - remaining as spectator')
-      }
-    }
-    
-    // Set the role and mark it as stable
-    stablePlayerRole.current = determinedRole
-    setPlayerRole(determinedRole)
-    hasJoinedAsPlayer.current = determinedRole !== 'spectator'
-    
-    console.log('🎯 Final determined role:', determinedRole)
-  }
-
   const copyRoomId = async () => {
     try {
       await navigator.clipboard.writeText(params.id as string)
@@ -227,16 +169,16 @@ export default function RoomPage() {
   }
 
   const handleReadyUp = async () => {
-    if (!room || stablePlayerRole.current === 'spectator') return
+    if (!room || !playerSession || playerSession.playerRole === 'spectator') return
     
     try {
       setIsReadyingUp(true)
       setError(null)
       
-      const isCurrentlyReady = stablePlayerRole.current === 'player_a' ? room.player_a_ready : room.player_b_ready
+      const isCurrentlyReady = playerSession.playerRole === 'player_a' ? room.player_a_ready : room.player_b_ready
       
       console.log('🚀 Ready up action:', {
-        playerRole: stablePlayerRole.current,
+        playerRole: playerSession.playerRole,
         isCurrentlyReady
       })
       
@@ -262,11 +204,8 @@ export default function RoomPage() {
       
       await roomService.leaveRoom(room.id)
       
-      // Clear session storage
-      const sessionKey = `debattle_session_${params.id}`
-      localStorage.removeItem(sessionKey)
-      localStorage.removeItem(`${sessionKey}_player_a`)
-      localStorage.removeItem(`${sessionKey}_player_b`)
+      // Clear role when leaving
+      roleManager.clearRole(room.id)
       
       router.push('/')
     } catch (err) {
@@ -274,9 +213,6 @@ export default function RoomPage() {
       setIsLeaving(false)
     }
   }
-
-  // Handle side selection - NOT NEEDED ON ROOM PAGE ANYMORE
-  // Side selection happens on Game Page
 
   const getPlayerStatus = (isPlayerA: boolean): string => {
     if (!room) return 'Waiting...'
@@ -291,7 +227,7 @@ export default function RoomPage() {
 
   const getPlayerLabel = (isPlayerA: boolean): string => {
     const baseLabel = isPlayerA ? 'Player A' : 'Player B'
-    if (stablePlayerRole.current === (isPlayerA ? 'player_a' : 'player_b')) {
+    if (playerSession && playerSession.playerRole === (isPlayerA ? 'player_a' : 'player_b')) {
       return `${baseLabel} (You)`
     }
     return baseLabel
@@ -313,16 +249,13 @@ export default function RoomPage() {
     )
   }
 
-  if (!room) {
+  if (!room || !playerSession) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-xl text-red-500">Room not found</div>
       </div>
     )
   }
-
-  // Show side selection component when in side_selection phase
-  // REMOVED - Side selection now happens on Game Page
 
   const bothPlayersPresent = room.player_a_id && room.player_b_id
   const bothPlayersReady = room.player_a_ready && room.player_b_ready
@@ -331,17 +264,35 @@ export default function RoomPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-4xl mx-auto">
-        {/* Debug Info - Remove in production */}
+        {/* Debug Info - Shows stable role management working */}
         <div className="bg-gray-900 border border-gray-700 rounded p-2 mb-4 text-xs font-mono">
-          <div>🎭 Role: {stablePlayerRole.current}</div>
-          <div>🔑 Session: {sessionId?.slice(-8)}</div>
-          <div>👤 A: {room.player_a_id?.slice(-8) || 'none'} | B: {room.player_b_id?.slice(-8) || 'none'}</div>
+          <div>🎭 Stable Role: {playerSession.playerRole}</div>
+          <div>🔑 Session ID: {playerSession.sessionId.slice(-8)}</div>
+          <div>🔒 Role Locked: {playerSession.isLocked ? 'Yes' : 'No'}</div>
+          <div>👤 Room A: {room.player_a_id?.slice(-8) || 'none'} | Room B: {room.player_b_id?.slice(-8) || 'none'}</div>
           <div>🎮 Status: {room.status} | Phase: {room.current_phase || 'none'}</div>
           {room.player_a_side && room.player_b_side && (
             <div>🎯 Sides: A={room.player_a_side} | B={room.player_b_side}</div>
           )}
           {countdown !== null && <div>⏰ Countdown: {countdown}</div>}
         </div>
+
+        {/* Countdown Overlay */}
+        {countdown !== null && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+            <div className="text-center">
+              <div className="text-8xl font-bold text-white mb-4 animate-pulse">
+                {countdown}
+              </div>
+              <div className="text-2xl text-white">
+                Get Ready to Debate!
+              </div>
+              <div className="text-lg text-gray-300 mt-2">
+                Topic: {room.topic}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Room ID Section */}
         <div className="bg-gray-800 rounded-lg p-6 mb-6">
@@ -354,7 +305,7 @@ export default function RoomPage() {
               >
                 {copied ? 'Copied!' : 'Copy ID'}
               </button>
-              {stablePlayerRole.current !== 'spectator' && (
+              {playerSession.playerRole !== 'spectator' && (
                 <button
                   onClick={handleLeaveRoom}
                   className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm"
@@ -363,6 +314,12 @@ export default function RoomPage() {
                   {isLeaving ? 'Leaving...' : 'Leave Room'}
                 </button>
               )}
+              <button
+                onClick={() => roleManager.debugSession(room.id)}
+                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
+              >
+                🔍 Debug Role
+              </button>
             </div>
           </div>
           <div className="bg-gray-700 p-3 rounded-lg font-mono text-sm break-all">
@@ -372,12 +329,12 @@ export default function RoomPage() {
           {/* Player Status Indicator */}
           <div className="mt-4 text-center">
             <div className={`inline-block px-4 py-2 rounded-lg font-semibold ${
-              stablePlayerRole.current === 'player_a' ? 'bg-blue-600' :
-              stablePlayerRole.current === 'player_b' ? 'bg-green-600' :
+              playerSession.playerRole === 'player_a' ? 'bg-blue-600' :
+              playerSession.playerRole === 'player_b' ? 'bg-green-600' :
               'bg-gray-600'
             }`}>
-              {stablePlayerRole.current === 'player_a' ? '🎮 You are Player A' :
-               stablePlayerRole.current === 'player_b' ? '🎮 You are Player B' :
+              {playerSession.playerRole === 'player_a' ? '🎮 You are Player A' :
+               playerSession.playerRole === 'player_b' ? '🎮 You are Player B' :
                '👀 You are Spectating'}
             </div>
           </div>
@@ -388,6 +345,22 @@ export default function RoomPage() {
           <div className="bg-green-600 rounded-lg p-4 mb-6 text-center">
             <h2 className="text-xl font-bold">🎮 Game Started!</h2>
             <p>The debate is now in progress</p>
+          </div>
+        )}
+
+        {/* Countdown Status */}
+        {isCountingDown && countdown !== null && (
+          <div className="bg-yellow-600 rounded-lg p-4 mb-6 text-center">
+            <h2 className="text-xl font-bold">⏰ Game Starting in {countdown}...</h2>
+            <p>Get ready to debate!</p>
+          </div>
+        )}
+
+        {/* Ready Status */}
+        {!gameStarted && bothPlayersPresent && bothPlayersReady && !isCountingDown && (
+          <div className="bg-yellow-600 rounded-lg p-4 mb-6 text-center">
+            <h2 className="text-xl font-bold">⚡ Both Players Ready!</h2>
+            <p>Starting countdown...</p>
           </div>
         )}
 
@@ -432,7 +405,7 @@ export default function RoomPage() {
           
           <div className="grid grid-cols-2 gap-4 mb-6">
             <div className={`p-4 rounded-lg ${
-              stablePlayerRole.current === 'player_a' ? 'bg-blue-700 border-2 border-blue-400' : 'bg-gray-700'
+              playerSession.playerRole === 'player_a' ? 'bg-blue-700 border-2 border-blue-400' : 'bg-gray-700'
             }`}>
               <h2 className="font-semibold mb-2">{getPlayerLabel(true)}</h2>
               <div className="text-sm text-gray-300 mb-2">
@@ -444,7 +417,7 @@ export default function RoomPage() {
             </div>
             
             <div className={`p-4 rounded-lg ${
-              stablePlayerRole.current === 'player_b' ? 'bg-green-700 border-2 border-green-400' : 'bg-gray-700'
+              playerSession.playerRole === 'player_b' ? 'bg-green-700 border-2 border-green-400' : 'bg-gray-700'
             }`}>
               <h2 className="font-semibold mb-2">{getPlayerLabel(false)}</h2>
               <div className="text-sm text-gray-300 mb-2">
@@ -467,20 +440,20 @@ export default function RoomPage() {
             </div>
             
             {/* Ready Up Button */}
-            {!gameStarted && stablePlayerRole.current !== 'spectator' && bothPlayersPresent && 
+            {!gameStarted && playerSession.playerRole !== 'spectator' && bothPlayersPresent && 
              room.status === 'waiting' && (
               <div className="mb-4">
                 <button
                   onClick={handleReadyUp}
                   className={`px-6 py-3 rounded-lg font-semibold text-lg transition-colors ${
-                    (stablePlayerRole.current === 'player_a' ? room.player_a_ready : room.player_b_ready)
+                    (playerSession.playerRole === 'player_a' ? room.player_a_ready : room.player_b_ready)
                       ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
                       : 'bg-green-600 hover:bg-green-700 text-white'
                   }`}
                   disabled={isReadyingUp}
                 >
                   {isReadyingUp ? 'Loading...' : 
-                   (stablePlayerRole.current === 'player_a' ? room.player_a_ready : room.player_b_ready) ? 
+                   (playerSession.playerRole === 'player_a' ? room.player_a_ready : room.player_b_ready) ? 
                    'UNREADY' : 'READY UP!'}
                 </button>
               </div>
