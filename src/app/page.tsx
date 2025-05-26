@@ -1,3 +1,5 @@
+// src/app/page.tsx - SIMPLE VERSION
+
 'use client'
 
 import { useState } from 'react'
@@ -21,11 +23,10 @@ export default function Home() {
       
       console.log('✅ Room created successfully:', {
         roomId: room.id,
-        playerRole,
-        sessionId: roomService.getSessionId().slice(-8)
+        playerRole
       })
       
-      // No need to manually set localStorage - RoleManager handles it automatically
+      // Just navigate - let the room page handle role assignment
       router.push(`/room/${room.id}`)
     } catch (err) {
       console.error('❌ Create room error:', err)
@@ -52,11 +53,10 @@ export default function Home() {
       
       console.log('✅ Successfully joined room:', {
         roomId: room.id,
-        playerRole,
-        sessionId: roomService.getSessionId().slice(-8)
+        playerRole
       })
       
-      // No need to manually set localStorage - RoleManager handles it automatically
+      // Just navigate - let the room page handle role assignment
       router.push(`/room/${room.id}`)
     } catch (err) {
       console.error('❌ Join room error:', err)

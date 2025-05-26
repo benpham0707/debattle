@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Room } from '@/lib/supabase'
 import { roomService } from '@/lib/roomService'
-import { roleManager, PlayerSession } from '@/lib/roleManager'
+import { roleManager, usePlayerRole } from '@/lib/roleManager'
 import SideSelection from '../../../components/SideSelection'
 import OpeningPrep from '../../../components/OpeningPrep'
 import OpeningStatements from '../../../components/OpeningStatements'
@@ -15,17 +15,16 @@ export default function GamePage() {
   const [room, setRoom] = useState<Room | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [playerSession, setPlayerSession] = useState<PlayerSession | null>(null)
 
-  const roleInitialized = useRef(false)
+  // Use the simple role hook
+  const { session: playerSession, isLoading: roleLoading } = usePlayerRole(params.id as string, room)
 
   useEffect(() => {
     const roomId = params.id as string
     
-    // Debug current localStorage state
     console.log('🎮 GAME PAGE - Starting with roomId:', roomId.slice(-8))
     
-    // Fetch room data and initialize role
+    // Fetch room data
     const fetchRoom = async () => {
       try {
         const roomData = await roomService.getRoom(roomId)
@@ -38,23 +37,12 @@ export default function GamePage() {
           }
           setRoom(roomData)
           
-          // Initialize role using the bulletproof role manager (only once)
-          if (!roleInitialized.current) {
-            const session = await roleManager.initializeRole(roomId, roomData)
-            setPlayerSession(session)
-            roleInitialized.current = true
-            
-            // Ensure role is locked during game
-            if (!session.isLocked) {
-              roleManager.lockRole(roomId)
-            }
-            
-            console.log('🎭 GAME PAGE - Role initialized and locked:', {
-              role: session.playerRole,
-              sessionId: session.sessionId.slice(-8),
-              isLocked: session.isLocked
-            })
-          }
+          console.log('🎮 GAME PAGE - Room loaded:', {
+            status: roomData.status,
+            phase: roomData.current_phase,
+            playerA: roomData.player_a_id?.slice(-8),
+            playerB: roomData.player_b_id?.slice(-8)
+          })
         } else {
           setError('Room not found')
         }
@@ -76,27 +64,6 @@ export default function GamePage() {
         playerA: updatedRoom.player_a_id?.slice(-8),
         playerB: updatedRoom.player_b_id?.slice(-8)
       })
-      
-      // CRITICAL: Never recalculate role on updates - role is locked during game
-      const currentSession = roleManager.getCurrentSession()
-      if (currentSession && currentSession.roomId === roomId) {
-        console.log('🔒 GAME PAGE - Maintaining locked role:', currentSession.playerRole)
-        
-        // Validate that our role is still consistent with room data
-        const expectedPlayerId = currentSession.playerRole === 'player_a' 
-          ? updatedRoom.player_a_id 
-          : updatedRoom.player_b_id
-          
-        if (currentSession.playerRole !== 'spectator' && expectedPlayerId !== currentSession.sessionId) {
-          console.error('🚨 GAME PAGE - Role consistency check failed!', {
-            myRole: currentSession.playerRole,
-            mySessionId: currentSession.sessionId.slice(-8),
-            expectedPlayerId: expectedPlayerId?.slice(-8),
-            roomPlayerA: updatedRoom.player_a_id?.slice(-8),
-            roomPlayerB: updatedRoom.player_b_id?.slice(-8)
-          })
-        }
-      }
       
       setRoom(updatedRoom)
       
@@ -130,7 +97,7 @@ export default function GamePage() {
     // The room will automatically update via subscription when sides are finalized
   }
 
-  if (loading) {
+  if (loading || roleLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-xl">Loading game...</div>
@@ -217,9 +184,9 @@ export default function GamePage() {
 
       {/* Game Content */}
       <div className="max-w-6xl mx-auto p-6">
-        {/* Debug Info - Shows stable role is maintained */}
+        {/* Debug Info */}
         <div className="bg-gray-900 border border-gray-700 rounded p-2 mb-4 text-xs font-mono">
-          <div>🎭 Locked Role: {playerSession.playerRole}</div>
+          <div>🎭 Role: {playerSession.playerRole}</div>
           <div>🔑 Session ID: {playerSession.sessionId.slice(-8)}</div>
           <div>🔒 Role Locked: {playerSession.isLocked ? 'Yes' : 'No'}</div>
           <div>👤 Room A: {room.player_a_id?.slice(-8) || 'none'} | Room B: {room.player_b_id?.slice(-8) || 'none'}</div>

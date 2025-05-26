@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Room } from '@/lib/supabase'
 import { roomService } from '@/lib/roomService'
-import { roleManager, PlayerSession } from '@/lib/roleManager'
+import { roleManager, usePlayerRole } from '@/lib/roleManager'
 
 export default function RoomPage() {
   const params = useParams()
@@ -13,7 +13,6 @@ export default function RoomPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
-  const [playerSession, setPlayerSession] = useState<PlayerSession | null>(null)
   const [isReadyingUp, setIsReadyingUp] = useState(false)
   const [isLeaving, setIsLeaving] = useState(false)
   
@@ -22,7 +21,9 @@ export default function RoomPage() {
   const [isCountingDown, setIsCountingDown] = useState(false)
   
   const countdownInterval = useRef<NodeJS.Timeout | null>(null)
-  const roleInitialized = useRef(false)
+
+  // Use the simple role hook
+  const { session: playerSession, isLoading: roleLoading } = usePlayerRole(params.id as string, room)
 
   useEffect(() => {
     const roomId = params.id as string
@@ -33,19 +34,12 @@ export default function RoomPage() {
         const roomData = await roomService.getRoom(roomId)
         if (roomData) {
           setRoom(roomData)
-          
-          // Initialize role using the new role manager (only once)
-          if (!roleInitialized.current) {
-            const session = await roleManager.initializeRole(roomId, roomData)
-            setPlayerSession(session)
-            roleInitialized.current = true
-            
-            console.log('🎭 ROOM PAGE - Role initialized:', {
-              role: session.playerRole,
-              sessionId: session.sessionId.slice(-8),
-              isLocked: session.isLocked
-            })
-          }
+          console.log('🏠 ROOM PAGE - Room loaded:', {
+            roomId: roomData.id.slice(-8),
+            playerA: roomData.player_a_id?.slice(-8),
+            playerB: roomData.player_b_id?.slice(-8),
+            status: roomData.status
+          })
         } else {
           setError('Room not found')
         }
@@ -68,12 +62,6 @@ export default function RoomPage() {
       })
       
       setRoom(updatedRoom)
-      
-      // CRITICAL: Never recalculate role on updates - role is locked once initialized
-      const currentSession = roleManager.getCurrentSession()
-      if (currentSession) {
-        console.log('🔒 ROOM PAGE - Maintaining locked role:', currentSession.playerRole)
-      }
     })
 
     return () => {
@@ -233,7 +221,7 @@ export default function RoomPage() {
     return baseLabel
   }
 
-  if (loading) {
+  if (loading || roleLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-xl">Loading room...</div>
@@ -266,7 +254,7 @@ export default function RoomPage() {
       <div className="max-w-4xl mx-auto">
         {/* Debug Info - Shows stable role management working */}
         <div className="bg-gray-900 border border-gray-700 rounded p-2 mb-4 text-xs font-mono">
-          <div>🎭 Stable Role: {playerSession.playerRole}</div>
+          <div>🎭 Role: {playerSession.playerRole}</div>
           <div>🔑 Session ID: {playerSession.sessionId.slice(-8)}</div>
           <div>🔒 Role Locked: {playerSession.isLocked ? 'Yes' : 'No'}</div>
           <div>👤 Room A: {room.player_a_id?.slice(-8) || 'none'} | Room B: {room.player_b_id?.slice(-8) || 'none'}</div>
