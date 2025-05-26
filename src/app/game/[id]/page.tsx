@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation'
 import { Room } from '@/lib/supabase'
 import { roomService } from '@/lib/roomService'
 import SideSelection from '../../../components/SideSelection'
+import OpeningPrep from '../../../components/OpeningPrep'
+import OpeningStatements from '../../../components/OpeningStatements'
 
 export default function GamePage() {
   const params = useParams()
@@ -200,6 +202,42 @@ export default function GamePage() {
     )
   }
 
+  // Show opening prep component when in opening_prep phase
+  if (room.current_phase === 'opening_prep' && stablePlayerRole.current !== 'spectator') {
+    const playerSide = stablePlayerRole.current === 'player_a' ? room.player_a_side : room.player_b_side
+    const opponentSide = stablePlayerRole.current === 'player_a' ? room.player_b_side : room.player_a_side
+    
+    if (playerSide && opponentSide) {
+      return (
+        <OpeningPrep
+          topic={room.topic}
+          roomId={room.id}
+          playerRole={stablePlayerRole.current}
+          playerSide={playerSide}
+          opponentSide={opponentSide}
+          room={room}
+        />
+      )
+    }
+  }
+
+  // Show opening statements component when in opening phase
+  if (room.current_phase === 'opening' && stablePlayerRole.current !== 'spectator') {
+    const playerSide = stablePlayerRole.current === 'player_a' ? room.player_a_side : room.player_b_side
+    
+    if (playerSide) {
+      return (
+        <OpeningStatements
+          topic={room.topic}
+          roomId={room.id}
+          playerRole={stablePlayerRole.current}
+          playerSide={playerSide}
+          room={room}
+        />
+      )
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Header */}
@@ -325,6 +363,18 @@ export default function GamePage() {
               <div className="text-4xl mb-4">⏰</div>
               <h4 className="text-xl font-bold mb-2">Side Selection in Progress</h4>
               <p className="text-gray-400">Players are choosing their debate sides...</p>
+            </div>
+          ) : room.current_phase === 'opening_prep' ? (
+            <div className="text-center py-12">
+              <div className="text-4xl mb-4">📝</div>
+              <h4 className="text-xl font-bold mb-2">Opening Prep Phase</h4>
+              <p className="text-gray-400">Players are preparing their opening statements...</p>
+            </div>
+          ) : room.current_phase === 'opening' ? (
+            <div className="text-center py-12">
+              <div className="text-4xl mb-4">🎤</div>
+              <h4 className="text-xl font-bold mb-2">Opening Statements</h4>
+              <p className="text-gray-400">Players are delivering their opening arguments...</p>
             </div>
           ) : room.player_a_side && room.player_b_side ? (
             <div className="text-center py-12">

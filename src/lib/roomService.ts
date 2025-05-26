@@ -345,14 +345,15 @@ export const roomService = {
 
       console.log('Final side assignments:', { playerASide, playerBSide })
 
-      // Update room with final assignments and move to ready phase
+      // Update room with final assignments and move to opening prep phase
       const { data, error: updateError } = await supabase
         .from('rooms')
         .update({
           player_a_side: playerASide,
           player_b_side: playerBSide,
-          status: 'ready_to_start',
-          current_phase: null
+          current_phase: 'opening_prep',
+          phase_start_time: new Date().toISOString(),
+          phase_duration: 30 // 30 seconds for opening prep
         })
         .eq('id', roomId)
         .select()
@@ -585,7 +586,63 @@ export const roomService = {
     }
   },
 
-  // Start the game with side selection phase (update status to debating with side_selection phase)
+  // Start opening prep phase
+  async startOpeningPrep(roomId: string): Promise<Room | null> {
+    try {
+      console.log('🎯 Starting opening prep phase for room:', roomId)
+      
+      const { data, error } = await supabase
+        .from('rooms')
+        .update({ 
+          current_phase: 'opening_prep',
+          phase_start_time: new Date().toISOString(),
+          phase_duration: 30 // 30 seconds for prep
+        })
+        .eq('id', roomId)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Error starting opening prep:', error)
+        throw new Error(`Failed to start opening prep: ${error.message}`)
+      }
+
+      console.log('✅ Opening prep started successfully:', data)
+      return data
+    } catch (error) {
+      console.error('Start opening prep error:', error)
+      throw error
+    }
+  },
+
+  // Start opening statements phase
+  async startOpeningStatements(roomId: string): Promise<Room | null> {
+    try {
+      console.log('🎯 Starting opening statements for room:', roomId)
+      
+      const { data, error } = await supabase
+        .from('rooms')
+        .update({ 
+          current_phase: 'opening',
+          phase_start_time: new Date().toISOString(),
+          phase_duration: 70 // 30s + 10s transition + 30s
+        })
+        .eq('id', roomId)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Error starting opening statements:', error)
+        throw new Error(`Failed to start opening statements: ${error.message}`)
+      }
+
+      console.log('✅ Opening statements started successfully:', data)
+      return data
+    } catch (error) {
+      console.error('Start opening statements error:', error)
+      throw error
+    }
+  },
   async startGameWithSideSelection(roomId: string): Promise<Room | null> {
     try {
       console.log('🎯 Starting game with side selection for room:', roomId)

@@ -34,7 +34,7 @@ export type Room = {
   
   player_a_health: number
   player_b_health: number
-  current_phase: 'side_selection' | 'opening' | 'rebuttal' | 'crossfire' | 'final' | 'judging' | null
+  current_phase: 'side_selection' | 'opening_prep' | 'opening' | 'rebuttal' | 'crossfire' | 'final' | 'judging' | null
   
   // Phase timing
   phase_start_time: string | null
@@ -51,7 +51,7 @@ export type Message = {
   sender_name: string
   content: string
   created_at: string
-  phase: 'side_selection' | 'opening' | 'rebuttal' | 'crossfire' | 'final' | 'judging'
+  phase: 'side_selection' | 'opening_prep' | 'opening' | 'rebuttal' | 'crossfire' | 'final' | 'judging'
   player_side: 'pro' | 'con'
 }
 
@@ -93,7 +93,8 @@ export type User = {
 // Game phase configurations
 export const PHASE_CONFIGS = {
   side_selection: { duration: 10, label: 'Side Selection' },
-  opening: { duration: 60, label: 'Opening Statements' }, // 30s each
+  opening_prep: { duration: 30, label: 'Opening Prep' }, // New prep phase
+  opening: { duration: 70, label: 'Opening Statements' }, // 30s + 10s transition + 30s
   rebuttal: { duration: 60, label: 'Rebuttals' }, // 30s each
   crossfire: { duration: 90, label: 'Crossfire Q&A' }, // 1.5 minutes rapid fire
   final: { duration: 60, label: 'Final Arguments' }, // 30s each
@@ -112,12 +113,73 @@ export function isPlayerTurn(
   }
   
   const elapsed = Math.floor((Date.now() - new Date(phaseStartTime).getTime()) / 1000)
-  const halfDuration = phaseDuration / 2
   
-  // First half = player_a, second half = player_b
-  if (elapsed < halfDuration) {
-    return playerRole === 'player_a'
+  if (phase === 'opening') {
+    // Opening: 0-30s = Player A, 30-40s = Transition, 40-70s = Player B
+    if (elapsed < 30) {
+      return playerRole === 'player_a'
+    } else if (elapsed < 40) {
+      return false // Transition period - no one speaks
+    } else {
+      return playerRole === 'player_b'
+    }
   } else {
-    return playerRole === 'player_b'
+    // Rebuttal and Final: 30s each player
+    const halfDuration = phaseDuration / 2
+    if (elapsed < halfDuration) {
+      return playerRole === 'player_a'
+    } else {
+      return playerRole === 'player_b'
+    }
+  }
+}
+
+// Helper function to get current turn info
+export function getCurrentTurnInfo(
+  phase: string,
+  phaseStartTime: string,
+  phaseDuration: number
+): { currentSpeaker: 'player_a' | 'player_b' | 'transition' | 'none', timeLeft: number } {
+  if (!['opening', 'rebuttal', 'final'].includes(phase)) {
+    const elapsed = Math.floor((Date.now() - new Date(phaseStartTime).getTime()) / 1000)
+    return { 
+      currentSpeaker: 'none', 
+      timeLeft: Math.max(0, phaseDuration - elapsed) 
+    }
+  }
+  
+  const elapsed = Math.floor((Date.now() - new Date(phaseStartTime).getTime()) / 1000)
+  
+  if (phase === 'opening') {
+    if (elapsed < 30) {
+      return { 
+        currentSpeaker: 'player_a', 
+        timeLeft: 30 - elapsed 
+      }
+    } else if (elapsed < 40) {
+      return { 
+        currentSpeaker: 'transition', 
+        timeLeft: 40 - elapsed 
+      }
+    } else {
+      return { 
+        currentSpeaker: 'player_b', 
+        timeLeft: 70 - elapsed 
+      }
+    }
+  } else {
+    // Rebuttal and Final phases
+    const halfDuration = phaseDuration / 2
+    if (elapsed < halfDuration) {
+      return { 
+        currentSpeaker: 'player_a', 
+        timeLeft: halfDuration - elapsed 
+      }
+    } else {
+      return { 
+        currentSpeaker: 'player_b', 
+        timeLeft: phaseDuration - elapsed 
+      }
+    }
   }
 }

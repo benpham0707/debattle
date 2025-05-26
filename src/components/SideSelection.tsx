@@ -32,12 +32,22 @@ const SideSelection: React.FC<SideSelectionProps> = ({
     fetchRoom();
 
     // Subscribe to room updates to get real-time voting results
-    const subscription = roomService.subscribeToRoom(roomId, (updatedRoom) => {
+    const subscription = roomService.subscribeToRoom(roomId, async (updatedRoom) => {
       setRoom(updatedRoom);
       
       // Check if side selection is complete
-      if (updatedRoom.status === 'ready_to_start' && updatedRoom.player_a_side && updatedRoom.player_b_side) {
-        onPhaseComplete(updatedRoom.player_a_side, updatedRoom.player_b_side);
+      if (updatedRoom.player_a_side && updatedRoom.player_b_side) {
+        // Move to opening prep phase
+        if (updatedRoom.current_phase === 'side_selection') {
+          // Transition to prep phase
+          try {
+            await roomService.startOpeningPrep(roomId);
+          } catch (error) {
+            console.error('Error starting opening prep:', error);
+          }
+        } else if (updatedRoom.current_phase === 'opening_prep') {
+          onPhaseComplete(updatedRoom.player_a_side, updatedRoom.player_b_side);
+        }
       }
     });
 
