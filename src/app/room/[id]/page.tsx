@@ -18,9 +18,14 @@ export default function RoomPage() {
   const [isReadyingUp, setIsReadyingUp] = useState(false)
   const [isLeaving, setIsLeaving] = useState(false)
   
+  // Countdown state
+  const [countdown, setCountdown] = useState<number | null>(null)
+  const [isCountingDown, setIsCountingDown] = useState(false)
+  
   // Use a ref to store the stable player role - this won't change once set
   const stablePlayerRole = useRef<'player_a' | 'player_b' | 'spectator'>('spectator')
   const hasJoinedAsPlayer = useRef(false)
+  const countdownInterval = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     const roomId = params.id as string
@@ -82,8 +87,77 @@ export default function RoomPage() {
     return () => {
       console.log('🔌 Unsubscribing from room updates')
       subscription.unsubscribe()
+      
+      // Cleanup countdown interval
+      if (countdownInterval.current) {
+        clearInterval(countdownInterval.current)
+      }
     }
   }, [params.id])
+
+  // Watch for game start condition and trigger countdown
+  useEffect(() => {
+    if (!room) return
+
+    const bothPlayersReady = room.player_a_ready && room.player_b_ready
+    const bothPlayersPresent = room.player_a_id && room.player_b_id
+    const gameNotStarted = room.status !== 'debating'
+
+    console.log('Game start check:', {
+      bothPlayersReady,
+      bothPlayersPresent,
+      gameNotStarted,
+      isCountingDown,
+      countdown
+    })
+
+    // Start countdown when both players are ready but game hasn't started
+    if (bothPlayersReady && bothPlayersPresent && gameNotStarted && !isCountingDown && countdown === null) {
+      console.log('🚀 Starting 5-second countdown!')
+      startCountdown()
+    }
+
+    // Navigate to game when status changes to debating
+    if (room.status === 'debating' && countdown === null && !isCountingDown) {
+      console.log('🎮 Game started! Navigating to game page...')
+      router.push(`/game/${room.id}`)
+    }
+  }, [room, isCountingDown, countdown, router])
+
+  const startCountdown = () => {
+    setIsCountingDown(true)
+    setCountdown(5)
+    
+    countdownInterval.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          // Countdown finished - start the game
+          if (countdownInterval.current) {
+            clearInterval(countdownInterval.current)
+          }
+          setIsCountingDown(false)
+          startGame()
+          return null
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }
+
+  const startGame = async () => {
+    if (!room) return
+    
+    try {
+      console.log('🎯 Starting the game!')
+      
+      // Update room status to 'debating' - this will trigger navigation
+      await roomService.startGame(room.id)
+      
+    } catch (error) {
+      console.error('Error starting game:', error)
+      setError('Failed to start the game')
+    }
+  }
 
   const determineInitialPlayerRole = async (roomData: Room) => {
     const roomId = params.id as string
@@ -255,7 +329,25 @@ export default function RoomPage() {
           <div>🎭 Role: {stablePlayerRole.current}</div>
           <div>🔑 Session: {sessionId?.slice(-8)}</div>
           <div>👤 A: {room.player_a_id?.slice(-8) || 'none'} | B: {room.player_b_id?.slice(-8) || 'none'}</div>
+          {countdown !== null && <div>⏰ Countdown: {countdown}</div>}
         </div>
+
+        {/* Countdown Overlay */}
+        {countdown !== null && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+            <div className="text-center">
+              <div className="text-8xl font-bold text-white mb-4 animate-pulse">
+                {countdown}
+              </div>
+              <div className="text-2xl text-white">
+                Get Ready to Debate!
+              </div>
+              <div className="text-lg text-gray-300 mt-2">
+                Topic: {room.topic}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Room ID Section */}
         <div className="bg-gray-800 rounded-lg p-6 mb-6">
@@ -305,11 +397,19 @@ export default function RoomPage() {
           </div>
         )}
 
+        {/* Countdown Status */}
+        {isCountingDown && countdown !== null && (
+          <div className="bg-yellow-600 rounded-lg p-4 mb-6 text-center">
+            <h2 className="text-xl font-bold">⏰ Game Starting in {countdown}...</h2>
+            <p>Get ready to debate!</p>
+          </div>
+        )}
+
         {/* Ready Status */}
-        {!gameStarted && bothPlayersPresent && bothPlayersReady && (
+        {!gameStarted && bothPlayersPresent && bothPlayersReady && !isCountingDown && (
           <div className="bg-yellow-600 rounded-lg p-4 mb-6 text-center">
             <h2 className="text-xl font-bold">⚡ Both Players Ready!</h2>
-            <p>Game starting...</p>
+            <p>Starting countdown...</p>
           </div>
         )}
 
@@ -349,7 +449,7 @@ export default function RoomPage() {
             </div>
             
             {/* Ready Up Button */}
-            {!gameStarted && stablePlayerRole.current !== 'spectator' && bothPlayersPresent && (
+            {!gameStarted && stablePlayerRole.current !== 'spectator' && bothPlayersPresent && !isCountingDown && (
               <div className="mb-4">
                 <button
                   onClick={handleReadyUp}
@@ -370,8 +470,10 @@ export default function RoomPage() {
             <div className="text-sm text-gray-400">
               {!bothPlayersPresent 
                 ? 'Waiting for another player to join...'
+                : isCountingDown
+                ? `Game starting in ${countdown} seconds...`
                 : bothPlayersReady
-                ? 'Game starting...'
+                ? 'Starting countdown...'
                 : 'Both players need to ready up to start the debate'
               }
             </div>

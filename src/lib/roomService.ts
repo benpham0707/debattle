@@ -410,6 +410,34 @@ export const roomService = {
     }
   },
 
+  // Start the game (update status to debating)
+  async startGame(roomId: string): Promise<Room | null> {
+    try {
+      console.log('🎯 Starting game for room:', roomId)
+      
+      const { data, error } = await supabase
+        .from('rooms')
+        .update({ 
+          status: 'debating',
+          current_phase: 'opening' // Set the initial debate phase
+        })
+        .eq('id', roomId)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Error starting game:', error)
+        throw new Error(`Failed to start game: ${error.message}`)
+      }
+
+      console.log('✅ Game started successfully:', data)
+      return data
+    } catch (error) {
+      console.error('Start game error:', error)
+      throw error
+    }
+  },
+
   // Enhanced subscription with better error handling
   subscribeToRoom(roomId: string, callback: (room: Room) => void) {
     console.log('Setting up subscription for room:', roomId)
