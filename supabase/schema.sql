@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS rooms (
     
     player_a_health INTEGER DEFAULT 100,
     player_b_health INTEGER DEFAULT 100,
-    current_phase TEXT CHECK (current_phase IN ('side_selection', 'opening', 'rebuttal', 'crossfire', 'final', 'judging')),
+    current_phase TEXT CHECK (current_phase IN ('side_selection', 'opening_prep', 'opening', 'rebuttal', 'crossfire', 'final', 'judging')),
     
     -- Phase timing
     phase_start_time TIMESTAMP WITH TIME ZONE,

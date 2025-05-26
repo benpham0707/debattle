@@ -11,6 +11,21 @@ export interface PlayerSession {
   isLocked: boolean // prevents role changes once game starts
 }
 
+// Helper function to generate a proper UUID v4
+function generateUUID(): string {
+  // Use crypto.randomUUID if available (modern browsers)
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  
+  // Fallback to manual generation (proper UUID v4 format)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
 // Single source of truth for role management
 class RoleManager {
   private static instance: RoleManager
@@ -23,14 +38,14 @@ class RoleManager {
     return RoleManager.instance
   }
 
-  // Generate a consistent session ID for this browser
+  // Generate a consistent session ID for this browser (proper UUID format)
   private generateSessionId(): string {
     // First check if we already have a global session ID
     let globalSessionId = localStorage.getItem('debattle_global_session')
     if (!globalSessionId) {
-      globalSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      globalSessionId = generateUUID() // Use proper UUID instead of custom format
       localStorage.setItem('debattle_global_session', globalSessionId)
-      console.log('🆕 Generated new global session ID:', globalSessionId.slice(-8))
+      console.log('🆕 Generated new global session UUID:', globalSessionId.slice(-8))
     }
     return globalSessionId
   }
@@ -153,7 +168,7 @@ class RoleManager {
     console.log('🧹 ROLE MANAGER - Cleared role for room:', roomId.slice(-8))
   }
 
-  // Get session ID for room service compatibility
+  // Get session ID for room service compatibility (ensures proper UUID format)
   getSessionId(): string {
     if (this.currentSession) {
       return this.currentSession.sessionId

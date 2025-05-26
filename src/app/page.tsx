@@ -19,18 +19,13 @@ export default function Home() {
       console.log('🏗️ Creating new room...')
       const { room, playerRole } = await roomService.createRoom()
       
-      // Store session information consistently
-      const sessionKey = `debattle_session_${room.id}`
-      const sessionId = roomService.getSessionId() // Use the session ID from room service
-      localStorage.setItem(sessionKey, sessionId)
-      localStorage.setItem(`${sessionKey}_${playerRole}`, sessionId)
-      
       console.log('✅ Room created successfully:', {
         roomId: room.id,
         playerRole,
-        sessionId: sessionId.slice(-8)
+        sessionId: roomService.getSessionId().slice(-8)
       })
       
+      // No need to manually set localStorage - RoleManager handles it automatically
       router.push(`/room/${room.id}`)
     } catch (err) {
       console.error('❌ Create room error:', err)
@@ -55,18 +50,13 @@ export default function Home() {
       
       const { room, playerRole } = await roomService.joinRoom(roomId.trim())
       
-      // Store session information consistently
-      const sessionKey = `debattle_session_${room.id}`
-      const sessionId = roomService.getSessionId() // Use the session ID from room service
-      localStorage.setItem(sessionKey, sessionId)
-      localStorage.setItem(`${sessionKey}_${playerRole}`, sessionId)
-      
       console.log('✅ Successfully joined room:', {
         roomId: room.id,
         playerRole,
-        sessionId: sessionId.slice(-8)
+        sessionId: roomService.getSessionId().slice(-8)
       })
       
+      // No need to manually set localStorage - RoleManager handles it automatically
       router.push(`/room/${room.id}`)
     } catch (err) {
       console.error('❌ Join room error:', err)
