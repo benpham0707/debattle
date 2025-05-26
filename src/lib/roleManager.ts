@@ -1,5 +1,5 @@
 // src/lib/roleManager.ts
-// Bulletproof role management system that maintains player roles throughout the entire game session
+// Role management system with unique session IDs per browser tab
 
 import React from 'react'
 
@@ -30,6 +30,7 @@ function generateUUID(): string {
 class RoleManager {
   private static instance: RoleManager
   private currentSession: PlayerSession | null = null
+  private tabSessionId: string | null = null // Unique per tab
   
   static getInstance(): RoleManager {
     if (!RoleManager.instance) {
@@ -38,16 +39,23 @@ class RoleManager {
     return RoleManager.instance
   }
 
-  // Generate a consistent session ID for this browser (proper UUID format)
-  private generateSessionId(): string {
-    // First check if we already have a global session ID
-    let globalSessionId = localStorage.getItem('debattle_global_session')
-    if (!globalSessionId) {
-      globalSessionId = generateUUID() // Use proper UUID instead of custom format
-      localStorage.setItem('debattle_global_session', globalSessionId)
-      console.log('🆕 Generated new global session UUID:', globalSessionId.slice(-8))
+  // Generate a unique session ID for this specific browser tab
+  private generateTabSessionId(): string {
+    // Check if we already have a session ID for this tab
+    if (this.tabSessionId) {
+      return this.tabSessionId
     }
-    return globalSessionId
+
+    // Generate a new UUID for this tab session
+    this.tabSessionId = generateUUID()
+    console.log('🆕 ROLE MANAGER - Generated new tab session UUID:', this.tabSessionId.slice(-8))
+    return this.tabSessionId
+  }
+
+  // Validate UUID format
+  private isValidUUID(uuid: string): boolean {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    return uuidRegex.test(uuid)
   }
 
   // Initialize or retrieve role for a specific room
@@ -60,14 +68,15 @@ class RoleManager {
       try {
         const parsed: PlayerSession = JSON.parse(existingSession)
         
-        // Validate that the session is still valid
-        if (this.validateSession(parsed, room)) {
+        // Validate that the session is still valid and has proper UUID
+        if (this.isValidUUID(parsed.sessionId) && this.validateSession(parsed, room)) {
           console.log('✅ ROLE MANAGER - Restored existing valid session:', {
             role: parsed.playerRole,
             sessionId: parsed.sessionId.slice(-8),
             isLocked: parsed.isLocked
           })
           this.currentSession = parsed
+          this.tabSessionId = parsed.sessionId // Remember this tab's session ID
           return parsed
         } else {
           console.log('❌ ROLE MANAGER - Existing session invalid, will create new one')
@@ -80,7 +89,7 @@ class RoleManager {
     }
 
     // Create new session if none exists or existing is invalid
-    const sessionId = this.generateSessionId()
+    const sessionId = this.generateTabSessionId()
     const playerRole = await this.determineRoleFromRoom(room, sessionId)
     
     const newSession: PlayerSession = {
@@ -170,10 +179,14 @@ class RoleManager {
 
   // Get session ID for room service compatibility (ensures proper UUID format)
   getSessionId(): string {
-    if (this.currentSession) {
+    if (this.currentSession && this.isValidUUID(this.currentSession.sessionId)) {
       return this.currentSession.sessionId
     }
-    return this.generateSessionId()
+    
+    // Generate new UUID for this tab if current session is invalid
+    const newId = this.generateTabSessionId()
+    console.log('🆕 ROLE MANAGER - Using tab session ID:', newId.slice(-8))
+    return newId
   }
 
   // Debug helper
@@ -184,12 +197,56 @@ class RoleManager {
     console.log('🔍 ROLE MANAGER DEBUG:', {
       currentSession: this.currentSession,
       storedSession: stored ? JSON.parse(stored) : null,
+      tabSessionId: this.tabSessionId?.slice(-8),
       allDebattleKeys: Object.keys(localStorage).filter(k => k.includes('debattle'))
     })
+  }
+
+  // Clean up invalid session data
+  cleanupInvalidSessions(): void {
+    const keys = Object.keys(localStorage).filter(k => k.includes('debattle'))
+    let cleaned = 0
+    
+    keys.forEach(key => {
+      try {
+        const value = localStorage.getItem(key)
+        if (value) {
+          // For role sessions, check if they have valid UUIDs
+          if (key.includes('debattle_role_')) {
+            const session = JSON.parse(value)
+            if (!this.isValidUUID(session.sessionId)) {
+              localStorage.removeItem(key)
+              cleaned++
+              console.log('🧹 ROLE MANAGER - Cleaned invalid session:', key)
+            }
+          }
+          // Skip global session cleanup since we're using per-tab sessions now
+        }
+      } catch (error) {
+        localStorage.removeItem(key)
+        cleaned++
+        console.log('🧹 ROLE MANAGER - Cleaned corrupted session:', key)
+      }
+    })
+    
+    if (cleaned > 0) {
+      console.log(`🧹 ROLE MANAGER - Cleaned ${cleaned} invalid sessions`)
+    }
+  }
+
+  // Force generate new session (useful for testing)
+  forceNewSession(): string {
+    this.tabSessionId = null
+    return this.generateTabSessionId()
   }
 }
 
 export const roleManager = RoleManager.getInstance()
+
+// Initialize cleanup on module load
+if (typeof window !== 'undefined') {
+  roleManager.cleanupInvalidSessions()
+}
 
 // Helper hook for React components
 export function usePlayerRole(roomId: string, room: any) {

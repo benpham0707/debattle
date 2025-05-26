@@ -31,6 +31,12 @@ function generateUUID(): string {
   })
 }
 
+// Validate UUID format
+function isValidUUID(uuid: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  return uuidRegex.test(uuid)
+}
+
 export const roomService = {
   // Helper to get current Supabase user ID
   async getUserId(): Promise<string | null> {
@@ -56,6 +62,13 @@ export const roomService = {
     if (!userId) {
       userId = this.getSessionId()
       console.log('🎯 ROOM SERVICE - Using session UUID for creator:', userId.slice(-8))
+    }
+    
+    // CRITICAL: Validate UUID format before database insertion
+    if (!isValidUUID(userId)) {
+      console.error('❌ ROOM SERVICE - Invalid UUID format, generating new one:', userId)
+      userId = generateUUID()
+      console.log('✅ ROOM SERVICE - Generated new valid UUID:', userId.slice(-8))
     }
     
     const randomTopic = DEBATE_TOPICS[Math.floor(Math.random() * DEBATE_TOPICS.length)]
@@ -100,19 +113,17 @@ export const roomService = {
         console.log('🎯 ROOM SERVICE - Using session UUID for joiner:', actualUserId.slice(-8))
       }
 
+      // CRITICAL: Validate UUID format before proceeding  
+      if (!isValidUUID(actualUserId)) {
+        console.error('❌ ROOM SERVICE - Invalid UUID format, generating new one:', actualUserId)
+        actualUserId = generateUUID()
+        console.log('✅ ROOM SERVICE - Generated new valid UUID:', actualUserId.slice(-8))
+      }
+
       console.log('🚪 ROOM SERVICE - Join attempt:', {
         roomId: roomId.slice(-8),
         userId: actualUserId.slice(-8)
       })
-
-      // Validate UUID format
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-      if (!uuidRegex.test(actualUserId)) {
-        console.error('❌ ROOM SERVICE - Invalid UUID format:', actualUserId)
-        // Generate a new proper UUID
-        actualUserId = generateUUID()
-        console.log('🆕 ROOM SERVICE - Generated new UUID:', actualUserId.slice(-8))
-      }
 
       // First, check if the room exists and get its current state
       const { data: currentRoom, error: fetchError } = await supabase
@@ -211,6 +222,13 @@ export const roomService = {
         userId = this.getSessionId()
       }
       
+      // Validate UUID format
+      if (!isValidUUID(userId)) {
+        console.error('❌ ROOM SERVICE - Invalid UUID format in readyUp:', userId)
+        userId = generateUUID()
+        console.log('✅ ROOM SERVICE - Generated new valid UUID for readyUp:', userId.slice(-8))
+      }
+      
       console.log('🚀 ROOM SERVICE - Ready up with user:', userId.slice(-8))
       
       // Get current room state
@@ -288,6 +306,13 @@ export const roomService = {
       let userId = await this.getUserId()
       if (!userId) {
         userId = this.getSessionId()
+      }
+
+      // Validate UUID format
+      if (!isValidUUID(userId)) {
+        console.error('❌ ROOM SERVICE - Invalid UUID format in submitSideVote:', userId)
+        userId = generateUUID()
+        console.log('✅ ROOM SERVICE - Generated new valid UUID for submitSideVote:', userId.slice(-8))
       }
 
       console.log('🗳️ ROOM SERVICE - Submitting vote:', {
@@ -443,6 +468,13 @@ export const roomService = {
         userId = this.getSessionId()
       }
       
+      // Validate UUID format
+      if (!isValidUUID(userId)) {
+        console.error('❌ ROOM SERVICE - Invalid UUID format in unready:', userId)
+        userId = generateUUID()
+        console.log('✅ ROOM SERVICE - Generated new valid UUID for unready:', userId.slice(-8))
+      }
+      
       const { data: room, error: fetchError } = await supabase
         .from('rooms')
         .select('*')
@@ -495,6 +527,13 @@ export const roomService = {
       let userId = await this.getUserId()
       if (!userId) {
         userId = this.getSessionId()
+      }
+
+      // Validate UUID format
+      if (!isValidUUID(userId)) {
+        console.error('❌ ROOM SERVICE - Invalid UUID format in leaveRoom:', userId)
+        userId = generateUUID()
+        console.log('✅ ROOM SERVICE - Generated new valid UUID for leaveRoom:', userId.slice(-8))
       }
 
       console.log('🚪 ROOM SERVICE - Leaving room:', {
