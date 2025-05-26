@@ -108,7 +108,8 @@ export default function RoomPage() {
       bothPlayersPresent,
       gameNotStarted,
       isCountingDown,
-      countdown
+      countdown,
+      roomStatus: room.status
     })
 
     // Start countdown when both players are ready but game hasn't started
@@ -150,8 +151,8 @@ export default function RoomPage() {
     try {
       console.log('🎯 Starting the game!')
       
-      // Update room status to 'debating' - this will trigger navigation
-      await roomService.startGame(room.id)
+      // Update room status to 'debating' with side_selection phase
+      await roomService.startGameWithSideSelection(room.id)
       
     } catch (error) {
       console.error('Error starting game:', error)
@@ -274,6 +275,9 @@ export default function RoomPage() {
     }
   }
 
+  // Handle side selection - NOT NEEDED ON ROOM PAGE ANYMORE
+  // Side selection happens on Game Page
+
   const getPlayerStatus = (isPlayerA: boolean): string => {
     if (!room) return 'Waiting...'
     
@@ -317,6 +321,9 @@ export default function RoomPage() {
     )
   }
 
+  // Show side selection component when in side_selection phase
+  // REMOVED - Side selection now happens on Game Page
+
   const bothPlayersPresent = room.player_a_id && room.player_b_id
   const bothPlayersReady = room.player_a_ready && room.player_b_ready
   const gameStarted = room.status === 'debating'
@@ -329,25 +336,12 @@ export default function RoomPage() {
           <div>🎭 Role: {stablePlayerRole.current}</div>
           <div>🔑 Session: {sessionId?.slice(-8)}</div>
           <div>👤 A: {room.player_a_id?.slice(-8) || 'none'} | B: {room.player_b_id?.slice(-8) || 'none'}</div>
+          <div>🎮 Status: {room.status} | Phase: {room.current_phase || 'none'}</div>
+          {room.player_a_side && room.player_b_side && (
+            <div>🎯 Sides: A={room.player_a_side} | B={room.player_b_side}</div>
+          )}
           {countdown !== null && <div>⏰ Countdown: {countdown}</div>}
         </div>
-
-        {/* Countdown Overlay */}
-        {countdown !== null && (
-          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-            <div className="text-center">
-              <div className="text-8xl font-bold text-white mb-4 animate-pulse">
-                {countdown}
-              </div>
-              <div className="text-2xl text-white">
-                Get Ready to Debate!
-              </div>
-              <div className="text-lg text-gray-300 mt-2">
-                Topic: {room.topic}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Room ID Section */}
         <div className="bg-gray-800 rounded-lg p-6 mb-6">
@@ -397,19 +391,38 @@ export default function RoomPage() {
           </div>
         )}
 
-        {/* Countdown Status */}
-        {isCountingDown && countdown !== null && (
-          <div className="bg-yellow-600 rounded-lg p-4 mb-6 text-center">
-            <h2 className="text-xl font-bold">⏰ Game Starting in {countdown}...</h2>
-            <p>Get ready to debate!</p>
-          </div>
-        )}
-
-        {/* Ready Status */}
-        {!gameStarted && bothPlayersPresent && bothPlayersReady && !isCountingDown && (
-          <div className="bg-yellow-600 rounded-lg p-4 mb-6 text-center">
-            <h2 className="text-xl font-bold">⚡ Both Players Ready!</h2>
-            <p>Starting countdown...</p>
+        {/* Side Selection Results */}
+        {room.status === 'ready_to_start' && room.player_a_side && room.player_b_side && (
+          <div className="bg-blue-600 rounded-lg p-6 mb-6">
+            <h2 className="text-xl font-bold text-center mb-4">🎯 Sides Assigned!</h2>
+            <div className="grid grid-cols-2 gap-4">
+              <div className={`p-4 rounded-lg text-center ${
+                room.player_a_side === 'pro' ? 'bg-green-700' : 'bg-red-700'
+              }`}>
+                <h3 className="font-semibold mb-2">
+                  {getPlayerLabel(true)}
+                </h3>
+                <div className="text-2xl mb-2">
+                  {room.player_a_side === 'pro' ? '✅' : '❌'}
+                </div>
+                <div className="font-bold">
+                  {room.player_a_side.toUpperCase()}
+                </div>
+              </div>
+              <div className={`p-4 rounded-lg text-center ${
+                room.player_b_side === 'pro' ? 'bg-green-700' : 'bg-red-700'
+              }`}>
+                <h3 className="font-semibold mb-2">
+                  {getPlayerLabel(false)}
+                </h3>
+                <div className="text-2xl mb-2">
+                  {room.player_b_side === 'pro' ? '✅' : '❌'}
+                </div>
+                <div className="font-bold">
+                  {room.player_b_side.toUpperCase()}
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -445,11 +458,17 @@ export default function RoomPage() {
 
           <div className="text-center">
             <div className="text-lg mb-4">
-              Status: <span className="font-semibold capitalize">{room.status}</span>
+              Status: <span className="font-semibold capitalize">{room.status.replace('_', ' ')}</span>
+              {room.current_phase && (
+                <span className="ml-2 text-sm text-gray-400">
+                  (Phase: {room.current_phase})
+                </span>
+              )}
             </div>
             
             {/* Ready Up Button */}
-            {!gameStarted && stablePlayerRole.current !== 'spectator' && bothPlayersPresent && !isCountingDown && (
+            {!gameStarted && stablePlayerRole.current !== 'spectator' && bothPlayersPresent && 
+             room.status === 'waiting' && (
               <div className="mb-4">
                 <button
                   onClick={handleReadyUp}
@@ -470,10 +489,12 @@ export default function RoomPage() {
             <div className="text-sm text-gray-400">
               {!bothPlayersPresent 
                 ? 'Waiting for another player to join...'
-                : isCountingDown
-                ? `Game starting in ${countdown} seconds...`
+                : room.status === 'side_selection'
+                ? 'Side selection in progress...'
+                : room.status === 'ready_to_start'
+                ? 'Sides assigned! Game will start soon...'
                 : bothPlayersReady
-                ? 'Starting countdown...'
+                ? 'Both players ready! Starting side selection...'
                 : 'Both players need to ready up to start the debate'
               }
             </div>

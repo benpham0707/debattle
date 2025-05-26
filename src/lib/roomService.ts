@@ -585,32 +585,35 @@ export const roomService = {
     }
   },
 
-  // Start the game (update status to debating)
-  async startGame(roomId: string): Promise<Room | null> {
+  // Start the game with side selection phase (update status to debating with side_selection phase)
+  async startGameWithSideSelection(roomId: string): Promise<Room | null> {
     try {
-      console.log('🎯 Starting game for room:', roomId)
+      console.log('🎯 Starting game with side selection for room:', roomId)
+      
+      const deadline = new Date(Date.now() + 10000) // 10 seconds from now
       
       const { data, error } = await supabase
         .from('rooms')
         .update({ 
           status: 'debating',
-          current_phase: 'opening', // Set the initial debate phase
+          current_phase: 'side_selection', // Start with side selection
+          side_selection_deadline: deadline.toISOString(),
           phase_start_time: new Date().toISOString(),
-          phase_duration: 60 // 60 seconds for opening phase
+          phase_duration: 10 // 10 seconds for side selection
         })
         .eq('id', roomId)
         .select()
         .single()
 
       if (error) {
-        console.error('Error starting game:', error)
+        console.error('Error starting game with side selection:', error)
         throw new Error(`Failed to start game: ${error.message}`)
       }
 
-      console.log('✅ Game started successfully:', data)
+      console.log('✅ Game started with side selection successfully:', data)
       return data
     } catch (error) {
-      console.error('Start game error:', error)
+      console.error('Start game with side selection error:', error)
       throw error
     }
   },

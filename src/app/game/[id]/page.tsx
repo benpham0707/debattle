@@ -6,32 +6,23 @@ import { Room } from '@/lib/supabase'
 import { roomService } from '@/lib/roomService'
 import SideSelection from '../../../components/SideSelection'
 
-export default function RoomPage() {
+export default function GamePage() {
   const params = useParams()
   const router = useRouter()
   const [room, setRoom] = useState<Room | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [copied, setCopied] = useState(false)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [playerRole, setPlayerRole] = useState<'player_a' | 'player_b' | 'spectator'>('spectator')
   const [sessionId, setSessionId] = useState<string | null>(null)
-  const [isReadyingUp, setIsReadyingUp] = useState(false)
-  const [isLeaving, setIsLeaving] = useState(false)
-  
-  // Countdown state
-  const [countdown, setCountdown] = useState<number | null>(null)
-  const [isCountingDown, setIsCountingDown] = useState(false)
-  
-  // Use a ref to store the stable player role - this won't change once set
+
+  // Use a ref to store the stable player role
   const stablePlayerRole = useRef<'player_a' | 'player_b' | 'spectator'>('spectator')
   const hasJoinedAsPlayer = useRef(false)
-  const countdownInterval = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     const roomId = params.id as string
     
-    // Get session ID - this should be consistent for this browser session
+    // Get session ID - consistent for this browser session
     const getSessionId = () => {
       let id = localStorage.getItem(`debattle_session_${roomId}`)
       if (!id) {
@@ -45,21 +36,26 @@ export default function RoomPage() {
     const getCurrentUser = async () => {
       const userId = await roomService.getUserId()
       const sessionId = getSessionId()
-      setCurrentUserId(userId || sessionId) // Use sessionId as fallback
       setSessionId(sessionId)
       
       console.log('🔑 User identification:', { userId, sessionId })
     }
     getCurrentUser()
     
-    // Fetch initial room data
+    // Fetch room data
     const fetchRoom = async () => {
       try {
         const roomData = await roomService.getRoom(roomId)
         if (roomData) {
+          // Check if game is actually started
+          if (roomData.status !== 'debating') {
+            console.log('Game not started, redirecting to room...')
+            router.push(`/room/${roomId}`)
+            return
+          }
           setRoom(roomData)
           
-          // Only determine role on initial load, not on updates
+          // Only determine role on initial load
           if (!hasJoinedAsPlayer.current) {
             await determineInitialPlayerRole(roomData)
           }
@@ -68,7 +64,7 @@ export default function RoomPage() {
         }
       } catch (err) {
         console.error('Error fetching room:', err)
-        setError('Failed to load room')
+        setError('Failed to load game')
       } finally {
         setLoading(false)
       }
@@ -76,49 +72,21 @@ export default function RoomPage() {
 
     fetchRoom()
 
-    // Subscribe to room updates
+    // Subscribe to room updates for real-time game state
     const subscription = roomService.subscribeToRoom(roomId, (updatedRoom) => {
-      console.log('🔄 Room updated via subscription:', updatedRoom)
+      console.log('🎮 Game room updated:', updatedRoom)
       setRoom(updatedRoom)
       
-      // Don't recalculate role on updates - keep the stable role
-      console.log('👤 Maintaining stable role:', stablePlayerRole.current)
+      // If game ends, redirect back to room
+      if (updatedRoom.status === 'finished') {
+        router.push(`/room/${roomId}`)
+      }
     })
 
     return () => {
-      console.log('🔌 Unsubscribing from room updates')
       subscription.unsubscribe()
-      
-      // Cleanup countdown interval
-      if (countdownInterval.current) {
-        clearInterval(countdownInterval.current)
-      }
     }
-  }, [params.id])
-
-  // Watch for game start condition and trigger countdown
-  useEffect(() => {
-    if (!room) return
-
-    const bothPlayersReady = room.player_a_ready && room.player_b_ready
-    const bothPlayersPresent = room.player_a_id && room.player_b_id
-    const gameNotStarted = room.status !== 'debating'
-
-    console.log('Game start check:', {
-      bothPlayersReady,
-      bothPlayersPresent,
-      gameNotStarted,
-      isCountingDown,
-      countdown,
-      roomStatus: room.status
-    })
-
-    // Navigate to game when status changes to debating
-    if (room.status === 'debating' && countdown === null && !isCountingDown) {
-      console.log('🎮 Game started! Navigating to game page...')
-      router.push(`/game/${room.id}`)
-    }
-  }, [room, isCountingDown, countdown, router])
+  }, [params.id, router])
 
   const determineInitialPlayerRole = async (roomData: Room) => {
     const roomId = params.id as string
@@ -176,65 +144,6 @@ export default function RoomPage() {
     console.log('🎯 Final determined role:', determinedRole)
   }
 
-  const copyRoomId = async () => {
-    try {
-      await navigator.clipboard.writeText(params.id as string)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch (err) {
-      console.error('Failed to copy room ID:', err)
-    }
-  }
-
-  const handleReadyUp = async () => {
-    if (!room || stablePlayerRole.current === 'spectator') return
-    
-    try {
-      setIsReadyingUp(true)
-      setError(null)
-      
-      const isCurrentlyReady = stablePlayerRole.current === 'player_a' ? room.player_a_ready : room.player_b_ready
-      
-      console.log('🚀 Ready up action:', {
-        playerRole: stablePlayerRole.current,
-        isCurrentlyReady
-      })
-      
-      if (isCurrentlyReady) {
-        await roomService.unready(room.id)
-      } else {
-        await roomService.readyUp(room.id)
-      }
-    } catch (err) {
-      console.error('Ready up error:', err)
-      setError(err instanceof Error ? err.message : 'Failed to ready up')
-    } finally {
-      setIsReadyingUp(false)
-    }
-  }
-
-  const handleLeaveRoom = async () => {
-    if (!room) return
-    
-    try {
-      setIsLeaving(true)
-      setError(null)
-      
-      await roomService.leaveRoom(room.id)
-      
-      // Clear session storage
-      const sessionKey = `debattle_session_${params.id}`
-      localStorage.removeItem(sessionKey)
-      localStorage.removeItem(`${sessionKey}_player_a`)
-      localStorage.removeItem(`${sessionKey}_player_b`)
-      
-      router.push('/')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to leave room')
-      setIsLeaving(false)
-    }
-  }
-
   // Handle side selection
   const handleSideSelected = async (side: 'pro' | 'con') => {
     if (!room) return
@@ -251,31 +160,13 @@ export default function RoomPage() {
   const handleSideSelectionComplete = async (playerASide: 'pro' | 'con', playerBSide: 'pro' | 'con') => {
     console.log('🎯 Side selection complete:', { playerASide, playerBSide })
     // The room will automatically update via subscription when sides are finalized
-  }
-
-  const getPlayerStatus = (isPlayerA: boolean): string => {
-    if (!room) return 'Waiting...'
-    
-    const playerId = isPlayerA ? room.player_a_id : room.player_b_id
-    const playerReady = isPlayerA ? room.player_a_ready : room.player_b_ready
-    
-    if (!playerId) return 'Waiting for player...'
-    if (playerReady) return '✅ Ready!'
-    return 'Not ready'
-  }
-
-  const getPlayerLabel = (isPlayerA: boolean): string => {
-    const baseLabel = isPlayerA ? 'Player A' : 'Player B'
-    if (stablePlayerRole.current === (isPlayerA ? 'player_a' : 'player_b')) {
-      return `${baseLabel} (You)`
-    }
-    return baseLabel
+    // After side selection, we can transition to the first debate phase
   }
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-xl">Loading room...</div>
+        <div className="text-xl">Loading game...</div>
       </div>
     )
   }
@@ -291,13 +182,13 @@ export default function RoomPage() {
   if (!room) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-xl text-red-500">Room not found</div>
+        <div className="text-xl text-red-500">Game not found</div>
       </div>
     )
   }
 
   // Show side selection component when in side_selection phase
-  if (room.status === 'side_selection' && stablePlayerRole.current !== 'spectator') {
+  if (room.current_phase === 'side_selection' && stablePlayerRole.current !== 'spectator') {
     return (
       <SideSelection
         topic={room.topic}
@@ -309,14 +200,21 @@ export default function RoomPage() {
     )
   }
 
-  const bothPlayersPresent = room.player_a_id && room.player_b_id
-  const bothPlayersReady = room.player_a_ready && room.player_b_ready
-  const gameStarted = room.status === 'debating'
-
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="max-w-4xl mx-auto">
-        {/* Debug Info - Remove in production */}
+    <div className="min-h-screen bg-gray-900 text-white">
+      {/* Header */}
+      <div className="bg-gray-800 p-4 border-b border-gray-700">
+        <div className="max-w-6xl mx-auto flex justify-between items-center">
+          <h1 className="text-xl font-bold">🧠 DeBATTLE</h1>
+          <div className="text-sm text-gray-400">
+            Room: {params.id?.toString().slice(-8)}
+          </div>
+        </div>
+      </div>
+
+      {/* Game Content */}
+      <div className="max-w-6xl mx-auto p-6">
+        {/* Debug Info */}
         <div className="bg-gray-900 border border-gray-700 rounded p-2 mb-4 text-xs font-mono">
           <div>🎭 Role: {stablePlayerRole.current}</div>
           <div>🔑 Session: {sessionId?.slice(-8)}</div>
@@ -325,67 +223,27 @@ export default function RoomPage() {
           {room.player_a_side && room.player_b_side && (
             <div>🎯 Sides: A={room.player_a_side} | B={room.player_b_side}</div>
           )}
-          {countdown !== null && <div>⏰ Countdown: {countdown}</div>}
         </div>
 
-        {/* Room ID Section */}
-        <div className="bg-gray-800 rounded-lg p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Room ID</h2>
-            <div className="flex gap-2">
-              <button
-                onClick={copyRoomId}
-                className="btn-secondary text-sm"
-              >
-                {copied ? 'Copied!' : 'Copy ID'}
-              </button>
-              {stablePlayerRole.current !== 'spectator' && (
-                <button
-                  onClick={handleLeaveRoom}
-                  className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm"
-                  disabled={isLeaving}
-                >
-                  {isLeaving ? 'Leaving...' : 'Leave Room'}
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="bg-gray-700 p-3 rounded-lg font-mono text-sm break-all">
-            {params.id}
-          </div>
-          
-          {/* Player Status Indicator */}
-          <div className="mt-4 text-center">
-            <div className={`inline-block px-4 py-2 rounded-lg font-semibold ${
-              stablePlayerRole.current === 'player_a' ? 'bg-blue-600' :
-              stablePlayerRole.current === 'player_b' ? 'bg-green-600' :
-              'bg-gray-600'
-            }`}>
-              {stablePlayerRole.current === 'player_a' ? '🎮 You are Player A' :
-               stablePlayerRole.current === 'player_b' ? '🎮 You are Player B' :
-               '👀 You are Spectating'}
-            </div>
+        {/* Topic Display */}
+        <div className="bg-gray-800 rounded-lg p-6 mb-6 text-center">
+          <h2 className="text-2xl font-bold mb-2">Debate Topic</h2>
+          <p className="text-xl text-blue-300">{room.topic}</p>
+          <div className="mt-4 text-sm text-gray-400">
+            Current Phase: <span className="capitalize font-semibold text-white">{room.current_phase || 'Loading'}</span>
           </div>
         </div>
 
-        {/* Game Status */}
-        {gameStarted && (
-          <div className="bg-green-600 rounded-lg p-4 mb-6 text-center">
-            <h2 className="text-xl font-bold">🎮 Game Started!</h2>
-            <p>The debate is now in progress</p>
-          </div>
-        )}
-
-        {/* Side Selection Results */}
-        {room.status === 'ready_to_start' && room.player_a_side && room.player_b_side && (
+        {/* Side Assignments (if completed) */}
+        {room.player_a_side && room.player_b_side && (
           <div className="bg-blue-600 rounded-lg p-6 mb-6">
-            <h2 className="text-xl font-bold text-center mb-4">🎯 Sides Assigned!</h2>
+            <h2 className="text-xl font-bold text-center mb-4">🎯 Debate Sides</h2>
             <div className="grid grid-cols-2 gap-4">
               <div className={`p-4 rounded-lg text-center ${
                 room.player_a_side === 'pro' ? 'bg-green-700' : 'bg-red-700'
               }`}>
                 <h3 className="font-semibold mb-2">
-                  {getPlayerLabel(true)}
+                  Player A {stablePlayerRole.current === 'player_a' ? '(You)' : ''}
                 </h3>
                 <div className="text-2xl mb-2">
                   {room.player_a_side === 'pro' ? '✅' : '❌'}
@@ -398,7 +256,7 @@ export default function RoomPage() {
                 room.player_b_side === 'pro' ? 'bg-green-700' : 'bg-red-700'
               }`}>
                 <h3 className="font-semibold mb-2">
-                  {getPlayerLabel(false)}
+                  Player B {stablePlayerRole.current === 'player_b' ? '(You)' : ''}
                 </h3>
                 <div className="text-2xl mb-2">
                   {room.player_b_side === 'pro' ? '✅' : '❌'}
@@ -411,79 +269,94 @@ export default function RoomPage() {
           </div>
         )}
 
-        {/* Debate Info Section */}
-        <div className="bg-gray-800 rounded-lg p-6 mb-6">
-          <h1 className="text-2xl font-bold mb-4">Debate Topic: {room.topic}</h1>
-          
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <div className={`p-4 rounded-lg ${
-              stablePlayerRole.current === 'player_a' ? 'bg-blue-700 border-2 border-blue-400' : 'bg-gray-700'
-            }`}>
-              <h2 className="font-semibold mb-2">{getPlayerLabel(true)}</h2>
-              <div className="text-sm text-gray-300 mb-2">
-                {getPlayerStatus(true)}
+        {/* Players Health Bar */}
+        <div className="grid grid-cols-2 gap-6 mb-6">
+          <div className={`rounded-lg p-4 ${
+            stablePlayerRole.current === 'player_a' 
+              ? 'bg-blue-700 border-2 border-blue-400' 
+              : 'bg-blue-700'
+          }`}>
+            <h3 className="font-semibold mb-2">
+              Player A {stablePlayerRole.current === 'player_a' ? '(You)' : ''}
+            </h3>
+            <div className="mb-2">
+              <div className="flex justify-between text-sm">
+                <span>Health</span>
+                <span>{room.player_a_health}/100</span>
               </div>
-              <div className="mt-2">
-                Health: {room.player_a_health}
-              </div>
-            </div>
-            
-            <div className={`p-4 rounded-lg ${
-              stablePlayerRole.current === 'player_b' ? 'bg-green-700 border-2 border-green-400' : 'bg-gray-700'
-            }`}>
-              <h2 className="font-semibold mb-2">{getPlayerLabel(false)}</h2>
-              <div className="text-sm text-gray-300 mb-2">
-                {getPlayerStatus(false)}
-              </div>
-              <div className="mt-2">
-                Health: {room.player_b_health}
+              <div className="w-full bg-gray-700 rounded-full h-3">
+                <div 
+                  className="bg-blue-400 h-3 rounded-full transition-all duration-300"
+                  style={{ width: `${room.player_a_health}%` }}
+                ></div>
               </div>
             </div>
           </div>
 
-          <div className="text-center">
-            <div className="text-lg mb-4">
-              Status: <span className="font-semibold capitalize">{room.status.replace('_', ' ')}</span>
-              {room.current_phase && (
-                <span className="ml-2 text-sm text-gray-400">
-                  (Phase: {room.current_phase})
-                </span>
-              )}
-            </div>
-            
-            {/* Ready Up Button */}
-            {!gameStarted && stablePlayerRole.current !== 'spectator' && bothPlayersPresent && 
-             room.status === 'waiting' && (
-              <div className="mb-4">
-                <button
-                  onClick={handleReadyUp}
-                  className={`px-6 py-3 rounded-lg font-semibold text-lg transition-colors ${
-                    (stablePlayerRole.current === 'player_a' ? room.player_a_ready : room.player_b_ready)
-                      ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
-                      : 'bg-green-600 hover:bg-green-700 text-white'
-                  }`}
-                  disabled={isReadyingUp}
-                >
-                  {isReadyingUp ? 'Loading...' : 
-                   (stablePlayerRole.current === 'player_a' ? room.player_a_ready : room.player_b_ready) ? 
-                   'UNREADY' : 'READY UP!'}
-                </button>
+          <div className={`rounded-lg p-4 ${
+            stablePlayerRole.current === 'player_b' 
+              ? 'bg-green-700 border-2 border-green-400' 
+              : 'bg-green-700'
+          }`}>
+            <h3 className="font-semibold mb-2">
+              Player B {stablePlayerRole.current === 'player_b' ? '(You)' : ''}
+            </h3>
+            <div className="mb-2">
+              <div className="flex justify-between text-sm">
+                <span>Health</span>
+                <span>{room.player_b_health}/100</span>
               </div>
-            )}
-            
-            <div className="text-sm text-gray-400">
-              {!bothPlayersPresent 
-                ? 'Waiting for another player to join...'
-                : room.status === 'side_selection'
-                ? 'Side selection in progress...'
-                : room.status === 'ready_to_start'
-                ? 'Sides assigned! Game will start soon...'
-                : bothPlayersReady
-                ? 'Both players ready! Starting side selection...'
-                : 'Both players need to ready up to start the debate'
-              }
+              <div className="w-full bg-gray-700 rounded-full h-3">
+                <div 
+                  className="bg-green-400 h-3 rounded-full transition-all duration-300"
+                  style={{ width: `${room.player_b_health}%` }}
+                ></div>
+              </div>
             </div>
           </div>
+        </div>
+
+        {/* Game Interface */}
+        <div className="bg-gray-800 rounded-lg p-6 mb-6">
+          <h3 className="text-lg font-semibold mb-4">🎮 Debate Arena</h3>
+          
+          {room.current_phase === 'side_selection' ? (
+            <div className="text-center py-12">
+              <div className="text-4xl mb-4">⏰</div>
+              <h4 className="text-xl font-bold mb-2">Side Selection in Progress</h4>
+              <p className="text-gray-400">Players are choosing their debate sides...</p>
+            </div>
+          ) : room.player_a_side && room.player_b_side ? (
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">🔥</div>
+              <h4 className="text-2xl font-bold mb-2">Debate Ready!</h4>
+              <p className="text-gray-400 mb-4">
+                The debate interface will be implemented here
+              </p>
+              <div className="space-y-2 text-sm text-gray-500">
+                <p>• Real-time chat system</p>
+                <p>• Phase-based timers</p>
+                <p>• AI judging integration</p>
+                <p>• Turn-based argument system</p>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <div className="text-4xl mb-4">⏳</div>
+              <h4 className="text-xl font-bold mb-2">Waiting for Setup</h4>
+              <p className="text-gray-400">Setting up the debate...</p>
+            </div>
+          )}
+        </div>
+
+        {/* Back to Room Button (for testing) */}
+        <div className="text-center">
+          <button
+            onClick={() => router.push(`/room/${params.id}`)}
+            className="btn-secondary"
+          >
+            ← Back to Room (for testing)
+          </button>
         </div>
       </div>
     </div>
