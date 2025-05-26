@@ -20,6 +20,7 @@ export default function GamePage() {
   // Use a ref to store the stable player role
   const stablePlayerRole = useRef<'player_a' | 'player_b' | 'spectator'>('spectator')
   const hasJoinedAsPlayer = useRef(false)
+  const roleInitialized = useRef(false) // Add flag to prevent re-initialization
 
   useEffect(() => {
     const roomId = params.id as string
@@ -57,9 +58,10 @@ export default function GamePage() {
           }
           setRoom(roomData)
           
-          // Only determine role on initial load
-          if (!hasJoinedAsPlayer.current) {
+          // Only determine role ONCE on initial load
+          if (!roleInitialized.current) {
             await determineInitialPlayerRole(roomData)
+            roleInitialized.current = true
           }
         } else {
           setError('Room not found')
@@ -79,6 +81,9 @@ export default function GamePage() {
       console.log('🎮 Game room updated:', updatedRoom)
       setRoom(updatedRoom)
       
+      // DON'T recalculate role on updates - keep the stable role
+      console.log('👤 Maintaining stable role:', stablePlayerRole.current)
+      
       // If game ends, redirect back to room
       if (updatedRoom.status === 'finished') {
         router.push(`/room/${roomId}`)
@@ -95,7 +100,7 @@ export default function GamePage() {
     const sessionKey = `debattle_session_${roomId}`
     const storedSessionId = localStorage.getItem(sessionKey)
     
-    // Check localStorage for existing role assignments
+    // Check localStorage for existing role assignments FIRST
     const playerASession = localStorage.getItem(`${sessionKey}_player_a`)
     const playerBSession = localStorage.getItem(`${sessionKey}_player_b`)
     
@@ -103,38 +108,54 @@ export default function GamePage() {
       storedSessionId,
       playerASession,
       playerBSession,
-      roomPlayerA: roomData.player_a_id,
-      roomPlayerB: roomData.player_b_id
+      roomPlayerA: roomData.player_a_id?.slice(-8),
+      roomPlayerB: roomData.player_b_id?.slice(-8)
     })
     
     let determinedRole: 'player_a' | 'player_b' | 'spectator' = 'spectator'
     
-    // Check if this session matches an existing player assignment
+    // PRIORITY 1: Check localStorage role assignments (most reliable)
     if (playerASession === storedSessionId && roomData.player_a_id) {
       determinedRole = 'player_a'
-      console.log('✅ Identified as Player A from localStorage')
+      console.log('✅ Identified as Player A from localStorage role assignment')
     } else if (playerBSession === storedSessionId && roomData.player_b_id) {
       determinedRole = 'player_b'
-      console.log('✅ Identified as Player B from localStorage')
+      console.log('✅ Identified as Player B from localStorage role assignment')
     } else {
-      // Check if we can match by user ID
+      // PRIORITY 2: Try to match by user ID (fallback)
       const userId = await roomService.getUserId()
       const effectiveUserId = userId || storedSessionId
       
-      console.log('🔍 Checking user ID match:', { effectiveUserId, roomPlayerA: roomData.player_a_id, roomPlayerB: roomData.player_b_id })
+      console.log('🔍 Fallback - checking user ID match:', { 
+        effectiveUserId: effectiveUserId?.slice(-8), 
+        roomPlayerA: roomData.player_a_id?.slice(-8), 
+        roomPlayerB: roomData.player_b_id?.slice(-8) 
+      })
       
       if (roomData.player_a_id === effectiveUserId) {
         determinedRole = 'player_a'
-        // Update localStorage to maintain consistency
-        localStorage.setItem(`${sessionKey}_player_a`, storedSessionId!)
-        console.log('✅ Matched as Player A by user ID')
+        // Update localStorage to maintain consistency for future
+        if (storedSessionId) {
+          localStorage.setItem(`${sessionKey}_player_a`, storedSessionId)
+        }
+        console.log('✅ Matched as Player A by user ID (fallback)')
       } else if (roomData.player_b_id === effectiveUserId) {
         determinedRole = 'player_b'
-        // Update localStorage to maintain consistency
-        localStorage.setItem(`${sessionKey}_player_b`, storedSessionId!)
-        console.log('✅ Matched as Player B by user ID')
+        // Update localStorage to maintain consistency for future
+        if (storedSessionId) {
+          localStorage.setItem(`${sessionKey}_player_b`, storedSessionId)
+        }
+        console.log('✅ Matched as Player B by user ID (fallback)')
       } else {
         console.log('👀 No match found - remaining as spectator')
+        console.log('🔍 Debug info:', {
+          storedSessionId: storedSessionId?.slice(-8),
+          effectiveUserId: effectiveUserId?.slice(-8),
+          roomPlayerAId: roomData.player_a_id?.slice(-8),
+          roomPlayerBId: roomData.player_b_id?.slice(-8),
+          playerASession: playerASession?.slice(-8),
+          playerBSession: playerBSession?.slice(-8)
+        })
       }
     }
     
@@ -143,7 +164,8 @@ export default function GamePage() {
     setPlayerRole(determinedRole)
     hasJoinedAsPlayer.current = determinedRole !== 'spectator'
     
-    console.log('🎯 Final determined role:', determinedRole)
+    console.log('🎯 FINAL determined role:', determinedRole)
+    console.log('🔒 Role locked in - will not change during game')
   }
 
   // Handle side selection
@@ -151,6 +173,7 @@ export default function GamePage() {
     if (!room) return
     
     try {
+      console.log(`🗳️ ${stablePlayerRole.current} voting for ${side}`)
       await roomService.submitSideVote(room.id, side)
       console.log('✅ Side vote submitted:', side)
     } catch (err) {
@@ -252,12 +275,13 @@ export default function GamePage() {
 
       {/* Game Content */}
       <div className="max-w-6xl mx-auto p-6">
-        {/* Debug Info */}
+        {/* Debug Info - Keep this for now to help debug */}
         <div className="bg-gray-900 border border-gray-700 rounded p-2 mb-4 text-xs font-mono">
-          <div>🎭 Role: {stablePlayerRole.current}</div>
+          <div>🎭 Stable Role: {stablePlayerRole.current}</div>
           <div>🔑 Session: {sessionId?.slice(-8)}</div>
-          <div>👤 A: {room.player_a_id?.slice(-8) || 'none'} | B: {room.player_b_id?.slice(-8) || 'none'}</div>
+          <div>👤 Room A: {room.player_a_id?.slice(-8) || 'none'} | Room B: {room.player_b_id?.slice(-8) || 'none'}</div>
           <div>🎮 Status: {room.status} | Phase: {room.current_phase || 'none'}</div>
+          <div>🔒 Role Initialized: {roleInitialized.current ? 'Yes' : 'No'}</div>
           {room.player_a_side && room.player_b_side && (
             <div>🎯 Sides: A={room.player_a_side} | B={room.player_b_side}</div>
           )}
@@ -279,7 +303,7 @@ export default function GamePage() {
             <div className="grid grid-cols-2 gap-4">
               <div className={`p-4 rounded-lg text-center ${
                 room.player_a_side === 'pro' ? 'bg-green-700' : 'bg-red-700'
-              }`}>
+              } ${stablePlayerRole.current === 'player_a' ? 'border-2 border-yellow-400' : ''}`}>
                 <h3 className="font-semibold mb-2">
                   Player A {stablePlayerRole.current === 'player_a' ? '(You)' : ''}
                 </h3>
@@ -292,7 +316,7 @@ export default function GamePage() {
               </div>
               <div className={`p-4 rounded-lg text-center ${
                 room.player_b_side === 'pro' ? 'bg-green-700' : 'bg-red-700'
-              }`}>
+              } ${stablePlayerRole.current === 'player_b' ? 'border-2 border-yellow-400' : ''}`}>
                 <h3 className="font-semibold mb-2">
                   Player B {stablePlayerRole.current === 'player_b' ? '(You)' : ''}
                 </h3>

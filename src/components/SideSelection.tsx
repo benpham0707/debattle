@@ -22,17 +22,24 @@ const SideSelection: React.FC<SideSelectionProps> = ({
   const [isWaitingForResults, setIsWaitingForResults] = useState(false);
   const [room, setRoom] = useState<any>(null);
 
+  // Debug log to ensure we're getting the correct playerRole
+  useEffect(() => {
+    console.log('🎭 SideSelection initialized with playerRole:', playerRole);
+  }, [playerRole]);
+
   // Fetch initial room state and subscribe to updates
   useEffect(() => {
     const fetchRoom = async () => {
       const roomData = await roomService.getRoom(roomId);
       setRoom(roomData);
+      console.log('🏠 Room data in SideSelection:', roomData);
     };
     
     fetchRoom();
 
     // Subscribe to room updates to get real-time voting results
     const subscription = roomService.subscribeToRoom(roomId, async (updatedRoom) => {
+      console.log('🔄 Room update in SideSelection:', updatedRoom);
       setRoom(updatedRoom);
       
       // Check if side selection is complete
@@ -81,6 +88,7 @@ const SideSelection: React.FC<SideSelectionProps> = ({
   const handleSideSelection = async (side: 'pro' | 'con') => {
     if (hasVoted || isWaitingForResults) return;
     
+    console.log(`🗳️ ${playerRole} selecting side: ${side}`);
     setSelectedSide(side);
     setHasVoted(true);
     onSideSelected(side);
@@ -124,6 +132,14 @@ const SideSelection: React.FC<SideSelectionProps> = ({
     return (
       <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
         <div className="max-w-4xl mx-auto p-6">
+          {/* Debug Info */}
+          <div className="bg-gray-900 border border-gray-700 rounded p-2 mb-4 text-xs font-mono">
+            <div>🎭 My Role: {playerRole}</div>
+            <div>🎯 My Final Side: {myFinalSide}</div>
+            <div>🗳️ My Vote: {playerRole === 'player_a' ? playerAVote : playerBVote}</div>
+            <div>🏠 Room ID: {roomId.slice(-8)}</div>
+          </div>
+
           {/* Topic Display */}
           <div className="bg-gray-800 rounded-lg p-8 mb-8 text-center">
             <h2 className="text-2xl font-bold mb-4">🎯 Debate Topic</h2>
@@ -137,7 +153,7 @@ const SideSelection: React.FC<SideSelectionProps> = ({
             <div className="grid grid-cols-2 gap-6 mb-6">
               <div className={`p-6 rounded-lg text-center ${
                 playerASide === 'pro' ? 'bg-green-700' : 'bg-red-700'
-              }`}>
+              } ${playerRole === 'player_a' ? 'border-2 border-yellow-400' : ''}`}>
                 <h4 className="text-xl font-semibold mb-2">
                   Player A {playerRole === 'player_a' ? '(You)' : ''}
                 </h4>
@@ -154,7 +170,7 @@ const SideSelection: React.FC<SideSelectionProps> = ({
 
               <div className={`p-6 rounded-lg text-center ${
                 playerBSide === 'pro' ? 'bg-green-700' : 'bg-red-700'
-              }`}>
+              } ${playerRole === 'player_b' ? 'border-2 border-yellow-400' : ''}`}>
                 <h4 className="text-xl font-semibold mb-2">
                   Player B {playerRole === 'player_b' ? '(You)' : ''}
                 </h4>
@@ -205,6 +221,14 @@ const SideSelection: React.FC<SideSelectionProps> = ({
   return (
     <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
       <div className="max-w-4xl mx-auto p-6">
+        {/* Debug Info */}
+        <div className="bg-gray-900 border border-gray-700 rounded p-2 mb-4 text-xs font-mono">
+          <div>🎭 My Role: {playerRole}</div>
+          <div>🗳️ Has Voted: {hasVoted ? 'Yes' : 'No'}</div>
+          <div>✅ Selected: {selectedSide || 'None'}</div>
+          <div>🏠 Room ID: {roomId.slice(-8)}</div>
+        </div>
+
         {/* Countdown Timer */}
         <div className="text-center mb-8">
           {!isWaitingForResults && (

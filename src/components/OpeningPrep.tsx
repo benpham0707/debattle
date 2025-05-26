@@ -20,6 +20,15 @@ const OpeningPrep: React.FC<OpeningPrepProps> = ({
 }) => {
   const [timeLeft, setTimeLeft] = useState(30);
 
+  // Debug log to ensure we're getting the correct playerRole
+  useEffect(() => {
+    console.log('🎭 OpeningPrep initialized with:', {
+      playerRole,
+      playerSide,
+      opponentSide
+    });
+  }, [playerRole, playerSide, opponentSide]);
+
   // Countdown timer based on room phase timing
   useEffect(() => {
     if (!room?.phase_start_time || !room?.phase_duration) return;
@@ -64,6 +73,14 @@ const OpeningPrep: React.FC<OpeningPrepProps> = ({
   return (
     <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
       <div className="max-w-4xl mx-auto p-6">
+        {/* Debug Info */}
+        <div className="bg-gray-900 border border-gray-700 rounded p-2 mb-4 text-xs font-mono">
+          <div>🎭 My Role: {playerRole}</div>
+          <div>🎯 My Side: {playerSide}</div>
+          <div>🏠 Room ID: {roomId.slice(-8)}</div>
+          <div>⏰ Time Left: {timeLeft}s</div>
+        </div>
+
         {/* Countdown Timer */}
         <div className="text-center mb-8">
           <div className={`text-6xl font-bold mb-4 ${timeLeft <= 5 ? 'text-red-400 animate-pulse' : 'text-blue-400'}`}>
@@ -163,7 +180,7 @@ const OpeningPrep: React.FC<OpeningPrepProps> = ({
 
         {/* Status */}
         <div className="text-center mt-8 text-gray-400">
-          <p>Room: {roomId.slice(-8)} | Opening statements will begin automatically</p>
+          <p>Room: {roomId.slice(-8)} | You are {playerRole.replace('_', ' ').toUpperCase()} | Opening statements will begin automatically</p>
         </div>
       </div>
     </div>
