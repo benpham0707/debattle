@@ -1,4 +1,4 @@
-// src/lib/roleManager.ts - SIMPLE VERSION
+// src/lib/roleManager.ts - FIXED VERSION
 
 import React from 'react'
 
@@ -26,6 +26,7 @@ function generateUUID(): string {
 class RoleManager {
   private static instance: RoleManager
   private currentSession: PlayerSession | null = null
+  private globalSessionId: string | null = null // Store globally
   
   static getInstance(): RoleManager {
     if (!RoleManager.instance) {
@@ -34,19 +35,34 @@ class RoleManager {
     return RoleManager.instance
   }
 
-  // SIMPLE: Just get a session ID - generate once per page load
+  // FIXED: Consistent session ID generation/retrieval
   getSessionId(): string {
-    if (this.currentSession) {
-      return this.currentSession.sessionId
+    // If we already have a global session ID, use it
+    if (this.globalSessionId) {
+      console.log('🔑 Using existing global session ID:', this.globalSessionId.slice(-8))
+      return this.globalSessionId
     }
     
-    // Generate a new one for this tab/page load
-    return generateUUID()
+    // Check if we have one stored in localStorage
+    const stored = localStorage.getItem('debattle_global_session_id')
+    if (stored) {
+      console.log('🔑 Retrieved session ID from localStorage:', stored.slice(-8))
+      this.globalSessionId = stored
+      return stored
+    }
+    
+    // Generate a new one and store it
+    const newId = generateUUID()
+    console.log('🔑 Generated new global session ID:', newId.slice(-8))
+    this.globalSessionId = newId
+    localStorage.setItem('debattle_global_session_id', newId)
+    
+    return newId
   }
 
-  // SIMPLE: Set role directly when we know what it should be
+  // Set role directly when we know what it should be
   setRole(roomId: string, room: any, playerRole: 'player_a' | 'player_b' | 'spectator'): PlayerSession {
-    const sessionId = this.getSessionId()
+    const sessionId = this.getSessionId() // Use consistent session ID
     
     console.log('🎭 ROLE MANAGER - Setting role directly:', {
       role: playerRole,
@@ -70,7 +86,7 @@ class RoleManager {
     return session
   }
 
-  // SIMPLE: Get role for a room
+  // Get role for a room
   getRole(roomId: string): PlayerSession | null {
     // First check memory
     if (this.currentSession && this.currentSession.roomId === roomId) {
@@ -94,7 +110,7 @@ class RoleManager {
     return null
   }
 
-  // SIMPLE: Clear role
+  // Clear role
   clearRole(roomId: string): void {
     const sessionKey = `debattle_role_${roomId}`
     localStorage.removeItem(sessionKey)
@@ -104,7 +120,7 @@ class RoleManager {
     }
   }
 
-  // SIMPLE: Lock role
+  // Lock role
   lockRole(roomId: string): void {
     if (this.currentSession && this.currentSession.roomId === roomId) {
       this.currentSession.isLocked = true
@@ -119,16 +135,30 @@ class RoleManager {
 
   debugSession(roomId: string): void {
     console.log('🔍 ROLE MANAGER DEBUG:', {
+      globalSessionId: this.globalSessionId?.slice(-8),
       currentSession: this.currentSession,
       roomId: roomId.slice(-8),
       storedSessions: Object.keys(localStorage).filter(k => k.includes('debattle'))
     })
   }
+
+  // Clear all stored data (for testing)
+  clearAll(): void {
+    this.globalSessionId = null
+    this.currentSession = null
+    localStorage.removeItem('debattle_global_session_id')
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith('debattle_')) {
+        localStorage.removeItem(key)
+      }
+    })
+    console.log('🧹 Cleared all role manager data')
+  }
 }
 
 export const roleManager = RoleManager.getInstance()
 
-// Simple hook
+// Simple hook - FIXED to use consistent session matching
 export function usePlayerRole(roomId: string, room: any) {
   const [session, setSession] = React.useState<PlayerSession | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
@@ -136,18 +166,28 @@ export function usePlayerRole(roomId: string, room: any) {
   React.useEffect(() => {
     if (!room) return
 
-    // Just get the existing role or set as spectator
+    // Check if we already have a role for this room
     let playerSession = roleManager.getRole(roomId)
     
     if (!playerSession) {
-      // Determine role based on room data
+      // Determine role based on room data using the SAME session ID
       let role: 'player_a' | 'player_b' | 'spectator' = 'spectator'
-      const sessionId = roleManager.getSessionId()
+      const sessionId = roleManager.getSessionId() // This will be consistent now
+      
+      console.log('🎭 Role determination:', {
+        sessionId: sessionId.slice(-8),
+        roomPlayerA: room.player_a_id?.slice(-8),
+        roomPlayerB: room.player_b_id?.slice(-8)
+      })
       
       if (room.player_a_id === sessionId) {
         role = 'player_a'
+        console.log('✅ Matched as Player A')
       } else if (room.player_b_id === sessionId) {
         role = 'player_b'
+        console.log('✅ Matched as Player B')
+      } else {
+        console.log('👀 No match - spectator role')
       }
       
       playerSession = roleManager.setRole(roomId, room, role)
@@ -155,7 +195,7 @@ export function usePlayerRole(roomId: string, room: any) {
     
     setSession(playerSession)
     setIsLoading(false)
-  }, [roomId, room?.id])
+  }, [roomId, room?.id, room?.status])
 
   return { session, isLoading }
 }
