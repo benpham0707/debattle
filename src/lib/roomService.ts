@@ -8,6 +8,11 @@ const DEBATE_TOPICS = [
   "Should college education be free?",
   "Is remote work better than office work?",
   "Should voting be mandatory?",
+  "Is climate change the most urgent global issue?",
+  "Should universal basic income be implemented?",
+  "Is social media more harmful than helpful?",
+  "Should genetic engineering be widely used?",
+  "Is online learning better than traditional classroom education?"
 ]
 
 // Helper function to generate a proper UUID v4
@@ -205,6 +210,166 @@ export const roomService = {
     }
   },
 
+  // Start side selection phase
+  async startSideSelection(roomId: string): Promise<Room | null> {
+    try {
+      const deadline = new Date(Date.now() + 10000) // 10 seconds from now
+      
+      const { data, error } = await supabase
+        .from('rooms')
+        .update({
+          status: 'side_selection',
+          current_phase: 'side_selection',
+          side_selection_deadline: deadline.toISOString(),
+          phase_start_time: new Date().toISOString(),
+          phase_duration: 10
+        })
+        .eq('id', roomId)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Error starting side selection:', error)
+        throw new Error(`Failed to start side selection: ${error.message}`)
+      }
+
+      console.log('✅ Side selection started')
+      return data
+    } catch (error) {
+      console.error('Start side selection error:', error)
+      throw error
+    }
+  },
+
+  // Submit side vote
+  async submitSideVote(roomId: string, side: 'pro' | 'con'): Promise<Room | null> {
+    try {
+      let userId = await this.getUserId()
+      if (!userId) {
+        userId = this.getSessionId()
+      }
+
+      // Get current room to determine player role
+      const { data: room, error: fetchError } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('id', roomId)
+        .single()
+
+      if (fetchError || !room) {
+        throw new Error('Room not found')
+      }
+
+      let updateData: any = {}
+      
+      if (room.player_a_id === userId) {
+        updateData.player_a_side_vote = side
+        console.log('Player A voted for:', side)
+      } else if (room.player_b_id === userId) {
+        updateData.player_b_side_vote = side
+        console.log('Player B voted for:', side)
+      } else {
+        throw new Error('You are not in this room')
+      }
+
+      // Update the room with the vote
+      const { data, error: updateError } = await supabase
+        .from('rooms')
+        .update(updateData)
+        .eq('id', roomId)
+        .select()
+        .single()
+
+      if (updateError) {
+        console.error('Error submitting vote:', updateError)
+        throw new Error(`Failed to submit vote: ${updateError.message}`)
+      }
+
+      return data
+    } catch (error) {
+      console.error('Submit side vote error:', error)
+      throw error
+    }
+  },
+
+  // Calculate final side assignments after voting period
+  async finalizeSideSelection(roomId: string): Promise<Room | null> {
+    try {
+      const { data: room, error: fetchError } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('id', roomId)
+        .single()
+
+      if (fetchError || !room) {
+        throw new Error('Room not found')
+      }
+
+      let playerASide: 'pro' | 'con'
+      let playerBSide: 'pro' | 'con'
+
+      // Apply your logic for side assignment
+      if (room.player_a_side_vote && room.player_b_side_vote) {
+        if (room.player_a_side_vote === room.player_b_side_vote) {
+          // Both chose same side - random assignment
+          if (Math.random() > 0.5) {
+            playerASide = 'pro'
+            playerBSide = 'con'
+          } else {
+            playerASide = 'con'
+            playerBSide = 'pro'
+          }
+        } else {
+          // Different sides - honor their choices
+          playerASide = room.player_a_side_vote
+          playerBSide = room.player_b_side_vote
+        }
+      } else if (room.player_a_side_vote && !room.player_b_side_vote) {
+        // Only A voted - A gets choice, B gets opposite
+        playerASide = room.player_a_side_vote
+        playerBSide = room.player_a_side_vote === 'pro' ? 'con' : 'pro'
+      } else if (!room.player_a_side_vote && room.player_b_side_vote) {
+        // Only B voted - B gets choice, A gets opposite
+        playerBSide = room.player_b_side_vote
+        playerASide = room.player_b_side_vote === 'pro' ? 'con' : 'pro'
+      } else {
+        // Nobody voted - random assignment
+        if (Math.random() > 0.5) {
+          playerASide = 'pro'
+          playerBSide = 'con'
+        } else {
+          playerASide = 'con'
+          playerBSide = 'pro'
+        }
+      }
+
+      console.log('Final side assignments:', { playerASide, playerBSide })
+
+      // Update room with final assignments and move to ready phase
+      const { data, error: updateError } = await supabase
+        .from('rooms')
+        .update({
+          player_a_side: playerASide,
+          player_b_side: playerBSide,
+          status: 'ready_to_start',
+          current_phase: null
+        })
+        .eq('id', roomId)
+        .select()
+        .single()
+
+      if (updateError) {
+        console.error('Error finalizing side selection:', updateError)
+        throw new Error(`Failed to finalize sides: ${updateError.message}`)
+      }
+
+      return data
+    } catch (error) {
+      console.error('Finalize side selection error:', error)
+      throw error
+    }
+  },
+
   // Ready up for the game
   async readyUp(roomId: string): Promise<Room | null> {
     try {
@@ -257,10 +422,16 @@ export const roomService = {
 
       console.log('Both players ready after update:', bothReady)
 
-      // If both players are ready and present, start the game
+      // If both players are ready and present, start side selection
       if (bothReady && room.player_a_id && room.player_b_id) {
-        updateData.status = 'debating'
-        console.log('Setting status to debating')
+        // Start side selection phase instead of going straight to debating
+        const deadline = new Date(Date.now() + 10000) // 10 seconds from now
+        updateData.status = 'side_selection'
+        updateData.current_phase = 'side_selection'
+        updateData.side_selection_deadline = deadline.toISOString()
+        updateData.phase_start_time = new Date().toISOString()
+        updateData.phase_duration = 10
+        console.log('Starting side selection phase')
       }
 
       // Update the room
@@ -312,10 +483,9 @@ export const roomService = {
         throw new Error('You are not in this room')
       }
 
-      // If game was about to start, keep it in waiting status
-      if (room.status === 'debating') {
-        updateData.status = 'waiting'
-      }
+      // Reset to waiting status
+      updateData.status = 'waiting'
+      updateData.current_phase = null
 
       const { data, error: updateError } = await supabase
         .from('rooms')
@@ -359,15 +529,20 @@ export const roomService = {
       if (room.player_a_id === userId) {
         updateData.player_a_id = null
         updateData.player_a_ready = false
+        updateData.player_a_side_vote = null
+        updateData.player_a_side = null
       } else if (room.player_b_id === userId) {
         updateData.player_b_id = null
         updateData.player_b_ready = false
+        updateData.player_b_side_vote = null
+        updateData.player_b_side = null
       } else {
         throw new Error('You are not in this room')
       }
 
       // Reset room status to waiting
       updateData.status = 'waiting'
+      updateData.current_phase = null
 
       const { error: updateError } = await supabase
         .from('rooms')
@@ -419,7 +594,9 @@ export const roomService = {
         .from('rooms')
         .update({ 
           status: 'debating',
-          current_phase: 'opening' // Set the initial debate phase
+          current_phase: 'opening', // Set the initial debate phase
+          phase_start_time: new Date().toISOString(),
+          phase_duration: 60 // 60 seconds for opening phase
         })
         .eq('id', roomId)
         .select()
@@ -459,7 +636,8 @@ export const roomService = {
               id: payload.new.id,
               player_a_id: payload.new.player_a_id ? payload.new.player_a_id.slice(-8) : null,
               player_b_id: payload.new.player_b_id ? payload.new.player_b_id.slice(-8) : null,
-              status: payload.new.status
+              status: payload.new.status,
+              current_phase: payload.new.current_phase
             } : null
           })
           
