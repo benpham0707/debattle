@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { Room } from './supabase'
+import { Room, Message } from './supabase'
 import { roleManager } from './roleManager'
 
 // List of debate topics for the MVP
@@ -458,6 +458,131 @@ export const roomService = {
       console.error('❌ ROOM SERVICE - Finalize side selection error:', error)
       throw error
     }
+  },
+
+  // Send a chat message during debate
+  async sendMessage(
+    roomId: string, 
+    content: string, 
+    phase: string, 
+    playerSide: 'pro' | 'con',
+    playerRole: 'player_a' | 'player_b'
+  ): Promise<Message | null> {
+    try {
+      let userId = await this.getUserId()
+      if (!userId) {
+        userId = this.getSessionId()
+      }
+
+      // Validate UUID format
+      if (!isValidUUID(userId)) {
+        console.error('❌ ROOM SERVICE - Invalid UUID format in sendMessage:', userId)
+        userId = generateUUID()
+        console.log('✅ ROOM SERVICE - Generated new valid UUID for sendMessage:', userId.slice(-8))
+      }
+
+      console.log('💬 ROOM SERVICE - Sending message:', {
+        roomId: roomId.slice(-8),
+        userId: userId.slice(-8),
+        phase,
+        playerSide,
+        contentLength: content.length
+      })
+
+      // Determine sender name based on role and side
+      const senderName = `${playerRole === 'player_a' ? 'Player A' : 'Player B'} (${playerSide.toUpperCase()})`
+
+      const messageData = {
+        room_id: roomId,
+        user_id: userId,
+        sender_name: senderName,
+        content: content,
+        phase: phase as 'side_selection' | 'opening' | 'rebuttal' | 'crossfire' | 'final' | 'judging',
+        player_side: playerSide
+      }
+
+      const { data, error } = await supabase
+        .from('messages')
+        .insert([messageData])
+        .select()
+        .single()
+
+      if (error) {
+        console.error('❌ ROOM SERVICE - Error sending message:', error)
+        throw new Error(`Failed to send message: ${error.message}`)
+      }
+
+      console.log('✅ ROOM SERVICE - Message sent successfully')
+      return data as Message
+    } catch (error) {
+      console.error('❌ ROOM SERVICE - Send message error:', error)
+      throw error
+    }
+  },
+
+  // Get all messages for a room
+  async getMessages(roomId: string): Promise<Message[]> {
+    try {
+      console.log('📜 ROOM SERVICE - Loading messages for room:', roomId.slice(-8))
+
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('room_id', roomId)
+        .order('created_at', { ascending: true })
+
+      if (error) {
+        console.error('❌ ROOM SERVICE - Error loading messages:', error)
+        throw new Error(`Failed to load messages: ${error.message}`)
+      }
+
+      console.log('✅ ROOM SERVICE - Loaded messages:', data?.length || 0)
+      return (data as Message[]) || []
+    } catch (error) {
+      console.error('❌ ROOM SERVICE - Get messages error:', error)
+      return []
+    }
+  },
+
+  // Subscribe to new messages in real-time
+  subscribeToMessages(roomId: string, callback: (message: Message) => void) {
+    console.log('📡 ROOM SERVICE - Setting up message subscription for room:', roomId.slice(-8))
+    
+    const channel = supabase
+      .channel(`messages:${roomId}:${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `room_id=eq.${roomId}`,
+        },
+        (payload: any) => {
+          console.log('💬 ROOM SERVICE - New message received:', {
+            sender: payload.new?.sender_name,
+            phase: payload.new?.phase,
+            side: payload.new?.player_side,
+            contentLength: payload.new?.content?.length
+          })
+          
+          if (payload.new) {
+            callback(payload.new as Message)
+          }
+        }
+      )
+      .subscribe((status: string, error?: Error) => {
+        console.log('📡 ROOM SERVICE - Message subscription status:', status)
+        if (error) {
+          console.error('❌ ROOM SERVICE - Message subscription error:', error)
+        }
+        
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ ROOM SERVICE - Successfully subscribed to message updates')
+        }
+      })
+
+    return channel
   },
 
   // Unready
