@@ -25,12 +25,30 @@ export default function GamePage() {
   useEffect(() => {
     const roomId = params.id as string
     
+    // DEBUGGING: Inspect localStorage state
+    const debugLocalStorage = () => {
+      const sessionKey = `debattle_session_${roomId}`
+      console.log('🔍 GAME PAGE - localStorage inspection:')
+      console.log(`   - Session key: ${sessionKey}`)
+      console.log(`   - Main session: ${localStorage.getItem(sessionKey)?.slice(-8)}`)
+      console.log(`   - Player A session: ${localStorage.getItem(`${sessionKey}_player_a`)?.slice(-8)}`)
+      console.log(`   - Player B session: ${localStorage.getItem(`${sessionKey}_player_b`)?.slice(-8)}`)
+      
+      // Log all localStorage keys for this room
+      const allKeys = Object.keys(localStorage).filter(key => key.includes(roomId))
+      console.log('   - All localStorage keys for this room:', allKeys)
+    }
+    debugLocalStorage()
+    
     // Get session ID - consistent for this browser session
     const getSessionId = () => {
       let id = localStorage.getItem(`debattle_session_${roomId}`)
       if (!id) {
         id = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
         localStorage.setItem(`debattle_session_${roomId}`, id)
+        console.log('🆕 GAME PAGE - Created new session ID:', id.slice(-8))
+      } else {
+        console.log('♻️ GAME PAGE - Using existing session ID:', id.slice(-8))
       }
       return id
     }
@@ -79,10 +97,38 @@ export default function GamePage() {
     // Subscribe to room updates for real-time game state
     const subscription = roomService.subscribeToRoom(roomId, (updatedRoom) => {
       console.log('🎮 Game room updated:', updatedRoom)
+      
+      // CRITICAL CHECK: Verify our role hasn't been corrupted by room updates
+      const currentRole = stablePlayerRole.current;
+      console.log('🔍 GAME PAGE - Role validation after room update:');
+      console.log(`   - Current stable role: ${currentRole}`);
+      console.log(`   - Room Player A ID: ${updatedRoom.player_a_id?.slice(-8)}`);
+      console.log(`   - Room Player B ID: ${updatedRoom.player_b_id?.slice(-8)}`);
+      console.log(`   - Our session ID: ${sessionId?.slice(-8)}`);
+      
+      // Double-check localStorage hasn't been corrupted
+      const sessionKey = `debattle_session_${roomId}`;
+      const playerASession = localStorage.getItem(`${sessionKey}_player_a`);
+      const playerBSession = localStorage.getItem(`${sessionKey}_player_b`);
+      console.log(`   - Player A localStorage: ${playerASession?.slice(-8)}`);
+      console.log(`   - Player B localStorage: ${playerBSession?.slice(-8)}`);
+      
+      // If our role doesn't match localStorage, something is wrong
+      if (currentRole === 'player_a' && playerASession !== sessionId) {
+        console.error('🚨 GAME PAGE - Player A role corruption detected!');
+        console.error(`   - Expected session: ${sessionId?.slice(-8)}`);
+        console.error(`   - Actual localStorage: ${playerASession?.slice(-8)}`);
+      }
+      if (currentRole === 'player_b' && playerBSession !== sessionId) {
+        console.error('🚨 GAME PAGE - Player B role corruption detected!');
+        console.error(`   - Expected session: ${sessionId?.slice(-8)}`);
+        console.error(`   - Actual localStorage: ${playerBSession?.slice(-8)}`);
+      }
+      
       setRoom(updatedRoom)
       
       // DON'T recalculate role on updates - keep the stable role
-      console.log('👤 Maintaining stable role:', stablePlayerRole.current)
+      console.log('👤 Maintaining stable role after update:', stablePlayerRole.current)
       
       // If game ends, redirect back to room
       if (updatedRoom.status === 'finished') {
@@ -100,33 +146,61 @@ export default function GamePage() {
     const sessionKey = `debattle_session_${roomId}`
     const storedSessionId = localStorage.getItem(sessionKey)
     
+    console.log('🎭 GAME PAGE - Starting role determination for room:', roomId.slice(-8))
+    console.log('🔑 GAME PAGE - Current session ID:', storedSessionId?.slice(-8))
+    
     // Check localStorage for existing role assignments FIRST
     const playerASession = localStorage.getItem(`${sessionKey}_player_a`)
     const playerBSession = localStorage.getItem(`${sessionKey}_player_b`)
     
-    console.log('🎭 Determining initial role:', {
-      storedSessionId,
-      playerASession,
-      playerBSession,
-      roomPlayerA: roomData.player_a_id?.slice(-8),
-      roomPlayerB: roomData.player_b_id?.slice(-8)
-    })
+    console.log('🎭 GAME PAGE - localStorage Role Assignments:')
+    console.log(`   - sessionKey: ${sessionKey}`)
+    console.log(`   - storedSessionId: ${storedSessionId?.slice(-8)}`)
+    console.log(`   - playerASession: ${playerASession?.slice(-8)} (${playerASession ? 'exists' : 'null'})`)
+    console.log(`   - playerBSession: ${playerBSession?.slice(-8)} (${playerBSession ? 'exists' : 'null'})`)
+    
+    console.log('🏠 GAME PAGE - Room Player IDs:')
+    console.log(`   - roomData.player_a_id: ${roomData.player_a_id?.slice(-8)}`)
+    console.log(`   - roomData.player_b_id: ${roomData.player_b_id?.slice(-8)}`)
     
     let determinedRole: 'player_a' | 'player_b' | 'spectator' = 'spectator'
     
     // PRIORITY 1: Check localStorage role assignments (most reliable)
-    if (playerASession === storedSessionId && roomData.player_a_id) {
+    console.log('🔍 GAME PAGE - Checking localStorage assignments...')
+    
+    // Check Player A assignment
+    if (playerASession && playerASession === storedSessionId && roomData.player_a_id) {
+      console.log('✅ GAME PAGE - MATCH: playerASession equals storedSessionId')
+      console.log(`   - playerASession: ${playerASession.slice(-8)}`)
+      console.log(`   - storedSessionId: ${storedSessionId?.slice(-8)}`)
+      console.log(`   - roomData.player_a_id exists: ${!!roomData.player_a_id}`)
       determinedRole = 'player_a'
-      console.log('✅ Identified as Player A from localStorage role assignment')
-    } else if (playerBSession === storedSessionId && roomData.player_b_id) {
+      console.log('✅ GAME PAGE - Identified as Player A from localStorage role assignment')
+    } 
+    // Check Player B assignment
+    else if (playerBSession && playerBSession === storedSessionId && roomData.player_b_id) {
+      console.log('✅ GAME PAGE - MATCH: playerBSession equals storedSessionId')
+      console.log(`   - playerBSession: ${playerBSession.slice(-8)}`)
+      console.log(`   - storedSessionId: ${storedSessionId?.slice(-8)}`)
+      console.log(`   - roomData.player_b_id exists: ${!!roomData.player_b_id}`)
       determinedRole = 'player_b'
-      console.log('✅ Identified as Player B from localStorage role assignment')
-    } else {
+      console.log('✅ GAME PAGE - Identified as Player B from localStorage role assignment')
+    } 
+    else {
+      console.log('❌ GAME PAGE - No localStorage match found')
+      console.log('🔍 GAME PAGE - Detailed comparison:')
+      console.log(`   - playerASession === storedSessionId: ${playerASession === storedSessionId}`)
+      console.log(`   - playerBSession === storedSessionId: ${playerBSession === storedSessionId}`)
+      console.log(`   - roomData.player_a_id exists: ${!!roomData.player_a_id}`)
+      console.log(`   - roomData.player_b_id exists: ${!!roomData.player_b_id}`)
+      
       // PRIORITY 2: Try to match by user ID (fallback)
+      console.log('🔄 GAME PAGE - Trying fallback user ID matching...')
       const userId = await roomService.getUserId()
       const effectiveUserId = userId || storedSessionId
       
-      console.log('🔍 Fallback - checking user ID match:', { 
+      console.log('🔍 GAME PAGE - User ID Fallback:', { 
+        userId: userId?.slice(-8),
         effectiveUserId: effectiveUserId?.slice(-8), 
         roomPlayerA: roomData.player_a_id?.slice(-8), 
         roomPlayerB: roomData.player_b_id?.slice(-8) 
@@ -137,25 +211,45 @@ export default function GamePage() {
         // Update localStorage to maintain consistency for future
         if (storedSessionId) {
           localStorage.setItem(`${sessionKey}_player_a`, storedSessionId)
+          console.log('🔧 GAME PAGE - Updated localStorage with Player A assignment')
         }
-        console.log('✅ Matched as Player A by user ID (fallback)')
+        console.log('✅ GAME PAGE - Matched as Player A by user ID (fallback)')
       } else if (roomData.player_b_id === effectiveUserId) {
         determinedRole = 'player_b'
         // Update localStorage to maintain consistency for future
         if (storedSessionId) {
           localStorage.setItem(`${sessionKey}_player_b`, storedSessionId)
+          console.log('🔧 GAME PAGE - Updated localStorage with Player B assignment')
         }
-        console.log('✅ Matched as Player B by user ID (fallback)')
+        console.log('✅ GAME PAGE - Matched as Player B by user ID (fallback)')
       } else {
-        console.log('👀 No match found - remaining as spectator')
-        console.log('🔍 Debug info:', {
-          storedSessionId: storedSessionId?.slice(-8),
-          effectiveUserId: effectiveUserId?.slice(-8),
-          roomPlayerAId: roomData.player_a_id?.slice(-8),
-          roomPlayerBId: roomData.player_b_id?.slice(-8),
-          playerASession: playerASession?.slice(-8),
-          playerBSession: playerBSession?.slice(-8)
-        })
+        console.log('👀 GAME PAGE - No match found - remaining as spectator')
+        console.log('🔍 GAME PAGE - Complete Debug Info:')
+        console.log(`   - storedSessionId: ${storedSessionId?.slice(-8)}`)
+        console.log(`   - effectiveUserId: ${effectiveUserId?.slice(-8)}`)
+        console.log(`   - roomPlayerAId: ${roomData.player_a_id?.slice(-8)}`)
+        console.log(`   - roomPlayerBId: ${roomData.player_b_id?.slice(-8)}`)
+        console.log(`   - playerASession: ${playerASession?.slice(-8)}`)
+        console.log(`   - playerBSession: ${playerBSession?.slice(-8)}`)
+      }
+    }
+    
+    // CRITICAL: Double-check that we don't have conflicting assignments
+    if (determinedRole !== 'spectator') {
+      console.log('🔍 GAME PAGE - Final validation check:')
+      console.log(`   - Determined role: ${determinedRole}`)
+      console.log(`   - Session ID: ${storedSessionId?.slice(-8)}`)
+      console.log(`   - Player A session: ${playerASession?.slice(-8)}`)
+      console.log(`   - Player B session: ${playerBSession?.slice(-8)}`)
+      console.log(`   - Room Player A ID: ${roomData.player_a_id?.slice(-8)}`)
+      console.log(`   - Room Player B ID: ${roomData.player_b_id?.slice(-8)}`)
+      
+      // Additional validation
+      if (determinedRole === 'player_a' && roomData.player_a_id !== (await roomService.getUserId() || storedSessionId)) {
+        console.error('🚨 GAME PAGE - VALIDATION ERROR: Player A role but user ID mismatch!')
+      }
+      if (determinedRole === 'player_b' && roomData.player_b_id !== (await roomService.getUserId() || storedSessionId)) {
+        console.error('🚨 GAME PAGE - VALIDATION ERROR: Player B role but user ID mismatch!')
       }
     }
     
@@ -164,8 +258,14 @@ export default function GamePage() {
     setPlayerRole(determinedRole)
     hasJoinedAsPlayer.current = determinedRole !== 'spectator'
     
-    console.log('🎯 FINAL determined role:', determinedRole)
-    console.log('🔒 Role locked in - will not change during game')
+    console.log('🎯 GAME PAGE - FINAL determined role:', determinedRole)
+    console.log('🔒 GAME PAGE - Role locked in - will not change during game')
+    
+    // Log localStorage state after role determination
+    console.log('📋 GAME PAGE - Final localStorage state:')
+    console.log(`   - ${sessionKey}: ${localStorage.getItem(sessionKey)?.slice(-8)}`)
+    console.log(`   - ${sessionKey}_player_a: ${localStorage.getItem(`${sessionKey}_player_a`)?.slice(-8)}`)
+    console.log(`   - ${sessionKey}_player_b: ${localStorage.getItem(`${sessionKey}_player_b`)?.slice(-8)}`)
   }
 
   // Handle side selection
@@ -425,12 +525,50 @@ export default function GamePage() {
 
         {/* Back to Room Button (for testing) */}
         <div className="text-center">
-          <button
-            onClick={() => router.push(`/room/${params.id}`)}
-            className="btn-secondary"
-          >
-            ← Back to Room (for testing)
-          </button>
+          <div className="space-x-4">
+            <button
+              onClick={() => router.push(`/room/${params.id}`)}
+              className="btn-secondary"
+            >
+              ← Back to Room (for testing)
+            </button>
+            <button
+              onClick={() => {
+                const roomId = params.id as string
+                const sessionKey = `debattle_session_${roomId}`
+                console.log('🔍 MANUAL localStorage inspection:')
+                console.log(`   - ${sessionKey}: ${localStorage.getItem(sessionKey)}`)
+                console.log(`   - ${sessionKey}_player_a: ${localStorage.getItem(`${sessionKey}_player_a`)}`)
+                console.log(`   - ${sessionKey}_player_b: ${localStorage.getItem(`${sessionKey}_player_b`)}`)
+                console.log(`   - Current role: ${stablePlayerRole.current}`)
+                console.log(`   - Session ID: ${sessionId}`)
+                
+                // Check for localStorage pollution
+                const allKeys = Object.keys(localStorage).filter(key => key.includes('debattle'));
+                console.log('   - All DeBATTLE keys:', allKeys);
+                allKeys.forEach(key => {
+                  console.log(`     - ${key}: ${localStorage.getItem(key)}`);
+                });
+              }}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              🔍 Inspect localStorage
+            </button>
+            <button
+              onClick={() => {
+                const roomId = params.id as string
+                const sessionKey = `debattle_session_${roomId}`
+                localStorage.removeItem(sessionKey)  
+                localStorage.removeItem(`${sessionKey}_player_a`)
+                localStorage.removeItem(`${sessionKey}_player_b`)
+                console.log('🧹 Cleared localStorage for this room')
+                window.location.reload()
+              }}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              🧹 Clear localStorage & Reload
+            </button>
+          </div>
         </div>
       </div>
     </div>
