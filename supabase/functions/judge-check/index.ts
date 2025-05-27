@@ -4,8 +4,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 // Start the edge function
 serve(async () => {
   const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    Deno.env.get('DATABASE_URL')!,
+    Deno.env.get('SERVICE_ROLE')!
   )
 
   // Fetch all active rooms that aren't finished
