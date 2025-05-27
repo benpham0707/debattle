@@ -91,11 +91,14 @@ export type User = {
 }
 
 // Game phase configurations
+// Update this in your src/lib/supabase.ts
+
+// Game phase configurations
 export const PHASE_CONFIGS = {
   side_selection: { duration: 10, label: 'Side Selection' },
-  opening_prep: { duration: 30, label: 'Opening Prep' }, // New prep phase
+  opening_prep: { duration: 30, label: 'Opening Prep' },
   opening: { duration: 70, label: 'Opening Statements' }, // 30s + 10s transition + 30s
-  rebuttal: { duration: 60, label: 'Rebuttals' }, // 30s each
+  rebuttal: { duration: 70, label: 'Rebuttals' }, // 30s + 10s transition + 30s (FIXED)
   crossfire: { duration: 90, label: 'Crossfire Q&A' }, // 1.5 minutes rapid fire
   final: { duration: 60, label: 'Final Arguments' }, // 30s each
   judging: { duration: 30, label: 'AI Judging' }

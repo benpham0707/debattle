@@ -797,6 +797,36 @@ export const roomService = {
       throw error
     }
   },
+  // Add this function to your roomService.ts
+
+  // Start rebuttal phase
+  async startRebuttalPhase(roomId: string): Promise<Room | null> {
+    try {
+      console.log('🔄 ROOM SERVICE - Starting rebuttal phase for room:', roomId.slice(-8))
+      
+      const { data, error } = await supabase
+        .from('rooms')
+        .update({ 
+          current_phase: 'rebuttal',
+          phase_start_time: new Date().toISOString(),
+          phase_duration: 70 // 30s + 10s transition + 30s (same as opening)
+        })
+        .eq('id', roomId)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('❌ ROOM SERVICE - Error starting rebuttal phase:', error)
+        throw new Error(`Failed to start rebuttal phase: ${error.message}`)
+      }
+
+      console.log('✅ ROOM SERVICE - Rebuttal phase started successfully')
+      return data
+    } catch (error) {
+      console.error('❌ ROOM SERVICE - Start rebuttal phase error:', error)
+      throw error
+    }
+  }, 
 
   // Start game with side selection
   async startGameWithSideSelection(roomId: string): Promise<Room | null> {
