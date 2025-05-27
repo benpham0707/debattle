@@ -12,7 +12,7 @@ export default function Home() {
   const [isJoining, setIsJoining] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleCreateRoom = async () => {
+  const handleJoinDeBattle = async () => {
     if (!playerName.trim()) {
       setError('Please enter your battle name')
       return
@@ -40,7 +40,35 @@ export default function Home() {
     }
   }
 
-  const handleJoinRoom = async (e: React.FormEvent) => {
+  const handleCreatePrivateRoom = async () => {
+    if (!playerName.trim()) {
+      setError('Please enter your battle name')
+      return
+    }
+
+    try {
+      setIsCreating(true)
+      setError(null)
+      
+      console.log('🏗️ Creating private room...')
+      const { room, playerRole } = await roomService.createRoom()
+      
+      console.log('✅ Private room created successfully:', {
+        roomId: room.id,
+        playerRole
+      })
+      
+      // Navigate to room page
+      router.push(`/room/${room.id}`)
+    } catch (err) {
+      console.error('❌ Create private room error:', err)
+      setError('An error occurred while creating the private room')
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  const handleJoinPrivateRoom = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!playerName.trim()) {
       setError('Please enter your battle name')
@@ -206,15 +234,16 @@ export default function Home() {
                     padding: '0.75rem 1rem',
                     borderRadius: '0.5rem',
                     outline: 'none',
-                    border: 'none'
+                    border: 'none',
+                    boxSizing: 'border-box' // This ensures padding is included in width
                   }}
                   maxLength={20}
                 />
               </div>
 
-              {/* Create Room Button */}
+              {/* Join DeBattle Button */}
               <button
-                onClick={handleCreateRoom}
+                onClick={handleJoinDeBattle}
                 disabled={!playerName.trim() || isCreating}
                 className="comic-border"
                 style={{
@@ -253,10 +282,10 @@ export default function Home() {
                       borderRadius: '50%',
                       animation: 'spin 1s linear infinite'
                     }}></div>
-                    Creating Battle...
+                    Joining DeBATTLE...
                   </div>
                 ) : (
-                  <>⚔️ CREATE BATTLE</>
+                  <>🎤 JOIN DEBATTLE</>
                 )}
               </button>
 
@@ -287,8 +316,8 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Join Room Section */}
-              <form onSubmit={handleJoinRoom} style={{
+              {/* Join Private Room Section */}
+              <form onSubmit={handleJoinPrivateRoom} style={{
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '0.75rem'
@@ -306,9 +335,10 @@ export default function Home() {
                     padding: '0.75rem 1rem',
                     borderRadius: '0.5rem',
                     outline: 'none',
-                    border: 'none'
+                    border: 'none',
+                    boxSizing: 'border-box' // This ensures padding is included in width
                   }}
-                  maxLength={6}
+                  maxLength={36} // UUID length
                 />
                 <button
                   type="submit"
@@ -316,7 +346,7 @@ export default function Home() {
                   className="comic-border"
                   style={{
                     width: '100%',
-                    backgroundColor: isJoining || !playerName.trim() || !roomId.trim() ? '#9ca3af' : '#7c3aed',
+                    backgroundColor: isJoining || !playerName.trim() || !roomId.trim() ? '#9ca3af' : '#10b981',
                     color: 'white',
                     fontWeight: 'bold',
                     fontSize: '1.125rem',
@@ -353,7 +383,55 @@ export default function Home() {
                       Joining...
                     </div>
                   ) : (
-                    <>👥 JOIN PRIVATE ROOM</>
+                    <>🔗 JOIN PRIVATE ROOM</>
+                  )}
+                </button>
+                
+                {/* Create Private Room Button - moved here */}
+                <button
+                  onClick={handleCreatePrivateRoom}
+                  disabled={!playerName.trim() || isCreating}
+                  className="comic-border"
+                  style={{
+                    width: '100%',
+                    backgroundColor: isCreating || !playerName.trim() ? '#9ca3af' : '#7c3aed',
+                    color: 'white',
+                    fontWeight: 'bold',
+                    fontSize: '1.125rem',
+                    padding: '0.75rem',
+                    border: 'none',
+                    cursor: isCreating || !playerName.trim() ? 'not-allowed' : 'pointer',
+                    transform: 'scale(1)',
+                    transition: 'transform 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isCreating && playerName.trim()) {
+                      (e.target as HTMLButtonElement).style.transform = 'scale(1.05)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.target as HTMLButtonElement).style.transform = 'scale(1)'
+                  }}
+                >
+                  {isCreating ? (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.5rem'
+                    }}>
+                      <div style={{
+                        width: '1rem',
+                        height: '1rem',
+                        border: '2px solid white',
+                        borderTop: '2px solid transparent',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }}></div>
+                      Creating...
+                    </div>
+                  ) : (
+                    <>💼 CREATE PRIVATE ROOM</>
                   )}
                 </button>
               </form>
