@@ -27,7 +27,7 @@ serve(async () => {
 
     if (elapsedSeconds >= room.phase_duration) {
       try {
-        const response = await fetch('https://your-vercel-url.com/api/judge/check-phases', {
+        const response = await fetch('http://localhost:3000/api/judge/check-phases', {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${Deno.env.get('JUDGE_SECRET')}`
