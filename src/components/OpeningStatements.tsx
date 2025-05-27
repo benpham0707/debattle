@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getCurrentTurnInfo } from '@/lib/supabase';
+import ChatInterface from './ChatInterface';
 
 interface OpeningStatementsProps {
   topic: string;
@@ -121,61 +122,77 @@ const OpeningStatements: React.FC<OpeningStatementsProps> = ({
           </p>
         </div>
 
-        {/* Speaking Progress */}
-        <div className="bg-gray-800 rounded-lg p-6 mb-6">
-          <h3 className="text-lg font-bold mb-4 text-center">Speaking Progress</h3>
-          
-          <div className="grid grid-cols-3 gap-4">
-            {/* Player A */}
-            <div className={`p-4 rounded-lg text-center ${
-              currentTurn.currentSpeaker === 'player_a' 
-                ? 'bg-blue-600 border-2 border-blue-400' 
-                : 'bg-gray-700'
-            }`}>
-              <h4 className="font-semibold mb-2">
-                Player A {playerRole === 'player_a' ? '(You)' : ''}
-              </h4>
-              <div className="text-2xl mb-2">
-                {currentTurn.currentSpeaker === 'player_a' ? '🎤' : '✅'}
+        {/* Split Layout: Speaking Progress + Chat */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {/* Speaking Progress */}
+          <div className="bg-gray-800 rounded-lg p-6">
+            <h3 className="text-lg font-bold mb-4 text-center">Speaking Progress</h3>
+            
+            <div className="grid grid-cols-3 gap-2">
+              {/* Player A */}
+              <div className={`p-3 rounded-lg text-center ${
+                currentTurn.currentSpeaker === 'player_a' 
+                  ? 'bg-blue-600 border-2 border-blue-400' 
+                  : 'bg-gray-700'
+              }`}>
+                <h4 className="font-semibold mb-1 text-sm">
+                  Player A {playerRole === 'player_a' ? '(You)' : ''}
+                </h4>
+                <div className="text-xl mb-1">
+                  {currentTurn.currentSpeaker === 'player_a' ? '🎤' : '✅'}
+                </div>
+                <div className="text-xs">
+                  {currentTurn.currentSpeaker === 'player_a' ? 'Speaking' : 'Complete'}
+                </div>
               </div>
-              <div className="text-sm">
-                {currentTurn.currentSpeaker === 'player_a' ? 'Speaking Now' : 'Complete'}
-              </div>
-            </div>
 
-            {/* Transition */}
-            <div className={`p-4 rounded-lg text-center ${
-              currentTurn.currentSpeaker === 'transition' 
-                ? 'bg-yellow-600 border-2 border-yellow-400' 
-                : 'bg-gray-700'
-            }`}>
-              <h4 className="font-semibold mb-2">Transition</h4>
-              <div className="text-2xl mb-2">
-                {currentTurn.currentSpeaker === 'transition' ? '⏳' : '⏸️'}
+              {/* Transition */}
+              <div className={`p-3 rounded-lg text-center ${
+                currentTurn.currentSpeaker === 'transition' 
+                  ? 'bg-yellow-600 border-2 border-yellow-400' 
+                  : 'bg-gray-700'
+              }`}>
+                <h4 className="font-semibold mb-1 text-sm">Transition</h4>
+                <div className="text-xl mb-1">
+                  {currentTurn.currentSpeaker === 'transition' ? '⏳' : '⏸️'}
+                </div>
+                <div className="text-xs">
+                  {currentTurn.currentSpeaker === 'transition' ? 'Active' : 'Waiting'}
+                </div>
               </div>
-              <div className="text-sm">
-                {currentTurn.currentSpeaker === 'transition' ? 'Active' : 'Waiting'}
-              </div>
-            </div>
 
-            {/* Player B */}
-            <div className={`p-4 rounded-lg text-center ${
-              currentTurn.currentSpeaker === 'player_b' 
-                ? 'bg-green-600 border-2 border-green-400' 
-                : 'bg-gray-700'
-            }`}>
-              <h4 className="font-semibold mb-2">
-                Player B {playerRole === 'player_b' ? '(You)' : ''}
-              </h4>
-              <div className="text-2xl mb-2">
-                {currentTurn.currentSpeaker === 'player_b' ? '🎤' : 
-                 currentTurn.timeLeft > 40 ? '⏳' : '✅'}
-              </div>
-              <div className="text-sm">
-                {currentTurn.currentSpeaker === 'player_b' ? 'Speaking Now' : 
-                 currentTurn.timeLeft > 40 ? 'Waiting' : 'Complete'}
+              {/* Player B */}
+              <div className={`p-3 rounded-lg text-center ${
+                currentTurn.currentSpeaker === 'player_b' 
+                  ? 'bg-green-600 border-2 border-green-400' 
+                  : 'bg-gray-700'
+              }`}>
+                <h4 className="font-semibold mb-1 text-sm">
+                  Player B {playerRole === 'player_b' ? '(You)' : ''}
+                </h4>
+                <div className="text-xl mb-1">
+                  {currentTurn.currentSpeaker === 'player_b' ? '🎤' : 
+                   currentTurn.timeLeft > 40 ? '⏳' : '✅'}
+                </div>
+                <div className="text-xs">
+                  {currentTurn.currentSpeaker === 'player_b' ? 'Speaking' : 
+                   currentTurn.timeLeft > 40 ? 'Waiting' : 'Complete'}
+                </div>
               </div>
             </div>
+          </div>
+
+          {/* Chat Interface */}
+          <div className="h-96">
+            <ChatInterface
+              roomId={roomId}
+              playerRole={playerRole}
+              playerSide={playerSide}
+              currentPhase="opening"
+              isMyTurn={isMyTurn()}
+              timeLeft={currentTurn.timeLeft}
+              disabled={currentTurn.currentSpeaker === 'transition'}
+            />
           </div>
         </div>
 
@@ -196,7 +213,7 @@ const OpeningStatements: React.FC<OpeningStatementsProps> = ({
               <h4 className="font-semibold mb-2">Remember:</h4>
               <ul className="space-y-1 text-sm text-gray-300">
                 <li>• You have exactly 30 seconds</li>
-                <li>• Speak clearly and confidently</li>
+                <li>• Type your arguments in chat</li>
                 <li>• Stay focused on your key points</li>
                 <li>• Set the tone for the debate</li>
               </ul>

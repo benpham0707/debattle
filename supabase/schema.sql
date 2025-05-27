@@ -54,7 +54,8 @@ CREATE TABLE IF NOT EXISTS messages (
     sender_name TEXT, -- Store sender name (nullable for now)
     content TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
-    phase TEXT CHECK (phase IN ('side_selection', 'opening', 'rebuttal', 'crossfire', 'final', 'judging')) NOT NULL,
+    -- In your current schema, messages phase enum needs updating:
+    phase TEXT CHECK (phase IN ('side_selection', 'opening_prep', 'opening', 'rebuttal', 'crossfire', 'final', 'judging')) NOT NULL,
     player_side TEXT CHECK (player_side IN ('pro', 'con')) NOT NULL
 );
 
