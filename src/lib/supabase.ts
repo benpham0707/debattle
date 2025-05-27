@@ -135,51 +135,33 @@ export function isPlayerTurn(
 }
 
 // Helper function to get current turn info
+// In src/lib/supabase.ts - Update this function
 export function getCurrentTurnInfo(
   phase: string,
   phaseStartTime: string,
   phaseDuration: number
 ): { currentSpeaker: 'player_a' | 'player_b' | 'transition' | 'none', timeLeft: number } {
-  if (!['opening', 'rebuttal', 'final'].includes(phase)) {
-    const elapsed = Math.floor((Date.now() - new Date(phaseStartTime).getTime()) / 1000)
-    return { 
-      currentSpeaker: 'none', 
-      timeLeft: Math.max(0, phaseDuration - elapsed) 
-    }
-  }
-  
   const elapsed = Math.floor((Date.now() - new Date(phaseStartTime).getTime()) / 1000)
   
   if (phase === 'opening') {
+    // Opening: Player A first, then transition, then Player B
     if (elapsed < 30) {
-      return { 
-        currentSpeaker: 'player_a', 
-        timeLeft: 30 - elapsed 
-      }
+      return { currentSpeaker: 'player_a', timeLeft: 30 - elapsed }
     } else if (elapsed < 40) {
-      return { 
-        currentSpeaker: 'transition', 
-        timeLeft: 40 - elapsed 
-      }
+      return { currentSpeaker: 'transition', timeLeft: 40 - elapsed }
     } else {
-      return { 
-        currentSpeaker: 'player_b', 
-        timeLeft: 70 - elapsed 
-      }
+      return { currentSpeaker: 'player_b', timeLeft: 70 - elapsed }
     }
-  } else {
-    // Rebuttal and Final phases
-    const halfDuration = phaseDuration / 2
-    if (elapsed < halfDuration) {
-      return { 
-        currentSpeaker: 'player_a', 
-        timeLeft: halfDuration - elapsed 
-      }
+  } else if (phase === 'rebuttal') {
+    // Rebuttal: Player B first, then transition, then Player A
+    if (elapsed < 30) {
+      return { currentSpeaker: 'player_b', timeLeft: 30 - elapsed }
+    } else if (elapsed < 40) {
+      return { currentSpeaker: 'transition', timeLeft: 40 - elapsed }
     } else {
-      return { 
-        currentSpeaker: 'player_b', 
-        timeLeft: phaseDuration - elapsed 
-      }
+      return { currentSpeaker: 'player_a', timeLeft: 70 - elapsed }
     }
   }
+  
+  return { currentSpeaker: 'none', timeLeft: Math.max(0, phaseDuration - elapsed) }
 }

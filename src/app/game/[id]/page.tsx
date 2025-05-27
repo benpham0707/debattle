@@ -8,6 +8,7 @@ import { roleManager, usePlayerRole } from '@/lib/roleManager'
 import SideSelection from '../../../components/SideSelection'
 import OpeningPrep from '../../../components/OpeningPrep'
 import OpeningStatements from '../../../components/OpeningStatements'
+import Rebuttals from '../../../components/Rebuttals'
 
 export default function GamePage() {
   const params = useParams()
@@ -62,7 +63,9 @@ export default function GamePage() {
         status: updatedRoom.status,
         phase: updatedRoom.current_phase,
         playerA: updatedRoom.player_a_id?.slice(-8),
-        playerB: updatedRoom.player_b_id?.slice(-8)
+        playerB: updatedRoom.player_b_id?.slice(-8),
+        healthA: updatedRoom.player_a_health,
+        healthB: updatedRoom.player_b_health
       })
       
       setRoom(updatedRoom)
@@ -170,6 +173,83 @@ export default function GamePage() {
     }
   }
 
+  // Show rebuttals component when in rebuttal phase
+  if (room.current_phase === 'rebuttal' && playerSession.playerRole !== 'spectator') {
+    const playerSide = playerSession.playerRole === 'player_a' ? room.player_a_side : room.player_b_side
+    
+    if (playerSide) {
+      return (
+        <Rebuttals
+          topic={room.topic}
+          roomId={room.id}
+          playerRole={playerSession.playerRole}
+          playerSide={playerSide}
+          room={room}
+        />
+      )
+    }
+  }
+
+  // Show judging phase
+  if (room.current_phase === 'judging') {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+        <div className="max-w-2xl mx-auto text-center">
+          {/* Header */}
+          <div className="bg-gray-800 p-4 rounded-t-lg">
+            <h1 className="text-xl font-bold">🧠 DeBATTLE</h1>
+            <div className="text-sm text-gray-400">
+              Room: {params.id?.toString().slice(-8)}
+            </div>
+          </div>
+
+          {/* Judging Content */}
+          <div className="bg-purple-900 p-8 rounded-b-lg">
+            <div className="text-6xl mb-4 animate-pulse">🤖</div>
+            <h2 className="text-3xl font-bold mb-4">AI Judging in Progress</h2>
+            <p className="text-lg text-gray-300 mb-6">
+              Our AI judge is analyzing the arguments and determining the winner...
+            </p>
+            
+            {/* Current Health Display */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="bg-blue-700 rounded-lg p-4">
+                <h3 className="font-semibold mb-2">
+                  Player A {playerSession.playerRole === 'player_a' ? '(You)' : ''}
+                </h3>
+                <div className="text-2xl font-bold mb-2">{room.player_a_health} HP</div>
+                <div className="w-full bg-gray-700 rounded-full h-3">
+                  <div 
+                    className="bg-blue-400 h-3 rounded-full transition-all duration-300"
+                    style={{ width: `${room.player_a_health}%` }}
+                  ></div>
+                </div>
+              </div>
+              
+              <div className="bg-green-700 rounded-lg p-4">
+                <h3 className="font-semibold mb-2">
+                  Player B {playerSession.playerRole === 'player_b' ? '(You)' : ''}
+                </h3>
+                <div className="text-2xl font-bold mb-2">{room.player_b_health} HP</div>
+                <div className="w-full bg-gray-700 rounded-full h-3">
+                  <div 
+                    className="bg-green-400 h-3 rounded-full transition-all duration-300"
+                    style={{ width: `${room.player_b_health}%` }}
+                  ></div>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-sm text-gray-400">
+              Please wait while the AI evaluates the latest round...
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Default fallback view - shouldn't normally be reached
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Header */}
@@ -287,49 +367,20 @@ export default function GamePage() {
           </div>
         </div>
 
-        {/* Game Interface */}
+        {/* Game Interface Placeholder */}
         <div className="bg-gray-800 rounded-lg p-6 mb-6">
           <h3 className="text-lg font-semibold mb-4">🎮 Debate Arena</h3>
           
-          {room.current_phase === 'side_selection' ? (
-            <div className="text-center py-12">
-              <div className="text-4xl mb-4">⏰</div>
-              <h4 className="text-xl font-bold mb-2">Side Selection in Progress</h4>
-              <p className="text-gray-400">Players are choosing their debate sides...</p>
-            </div>
-          ) : room.current_phase === 'opening_prep' ? (
-            <div className="text-center py-12">
-              <div className="text-4xl mb-4">📝</div>
-              <h4 className="text-xl font-bold mb-2">Opening Prep Phase</h4>
-              <p className="text-gray-400">Players are preparing their opening statements...</p>
-            </div>
-          ) : room.current_phase === 'opening' ? (
-            <div className="text-center py-12">
-              <div className="text-4xl mb-4">🎤</div>
-              <h4 className="text-xl font-bold mb-2">Opening Statements</h4>
-              <p className="text-gray-400">Players are delivering their opening arguments...</p>
-            </div>
-          ) : room.player_a_side && room.player_b_side ? (
-            <div className="text-center py-12">
-              <div className="text-6xl mb-4">🔥</div>
-              <h4 className="text-2xl font-bold mb-2">Debate Ready!</h4>
-              <p className="text-gray-400 mb-4">
-                The debate interface will be implemented here
-              </p>
-              <div className="space-y-2 text-sm text-gray-500">
-                <p>• Real-time chat system</p>
-                <p>• Phase-based timers</p>
-                <p>• AI judging integration</p>
-                <p>• Turn-based argument system</p>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <div className="text-4xl mb-4">⏳</div>
-              <h4 className="text-xl font-bold mb-2">Waiting for Setup</h4>
-              <p className="text-gray-400">Setting up the debate...</p>
-            </div>
-          )}
+          <div className="text-center py-12">
+            <div className="text-4xl mb-4">❓</div>
+            <h4 className="text-xl font-bold mb-2">Unknown Phase</h4>
+            <p className="text-gray-400">
+              Current phase: {room.current_phase || 'none'}
+            </p>
+            <p className="text-sm text-gray-500 mt-2">
+              This shouldn't normally happen. Please check the debug info above.
+            </p>
+          </div>
         </div>
 
         {/* Debug and Testing Controls */}
@@ -355,6 +406,10 @@ export default function GamePage() {
                 console.log('   - Room Phase:', room.current_phase)
                 console.log('   - Room Player A:', room.player_a_id?.slice(-8))
                 console.log('   - Room Player B:', room.player_b_id?.slice(-8))
+                console.log('   - Player A Health:', room.player_a_health)
+                console.log('   - Player B Health:', room.player_b_health)
+                console.log('   - Player A Side:', room.player_a_side)
+                console.log('   - Player B Side:', room.player_b_side)
               }}
               className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
             >
