@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "judge-check": {
+      "schedule": "*/15 * * * * *"
+    }
+  }
+}
