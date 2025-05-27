@@ -1,5 +1,3 @@
-// src/app/page.tsx - SIMPLE VERSION
-
 'use client'
 
 import { useState } from 'react'
@@ -8,12 +6,18 @@ import { roomService } from '@/lib/roomService'
 
 export default function Home() {
   const router = useRouter()
+  const [playerName, setPlayerName] = useState('')
   const [roomId, setRoomId] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [isJoining, setIsJoining] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const handleCreateRoom = async () => {
+    if (!playerName.trim()) {
+      setError('Please enter your battle name')
+      return
+    }
+
     try {
       setIsCreating(true)
       setError(null)
@@ -26,7 +30,7 @@ export default function Home() {
         playerRole
       })
       
-      // Just navigate - let the room page handle role assignment
+      // Navigate to room page
       router.push(`/room/${room.id}`)
     } catch (err) {
       console.error('❌ Create room error:', err)
@@ -38,6 +42,10 @@ export default function Home() {
 
   const handleJoinRoom = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!playerName.trim()) {
+      setError('Please enter your battle name')
+      return
+    }
     if (!roomId.trim()) {
       setError('Please enter a room ID')
       return
@@ -56,7 +64,6 @@ export default function Home() {
         playerRole
       })
       
-      // Just navigate - let the room page handle role assignment
       router.push(`/room/${room.id}`)
     } catch (err) {
       console.error('❌ Join room error:', err)
@@ -71,67 +78,330 @@ export default function Home() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-16">
-      <div className="max-w-2xl mx-auto text-center">
-        <h1 className="text-4xl font-bold mb-8">🧠 DeBATTLE</h1>
-        <p className="text-xl mb-4">Face off in AI-judged real-time debates</p>
-        <p className="text-gray-400 mb-12">Create a custom debate room or join an existing one</p>
-
-        {error && (
-          <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded-lg mb-8">
-            {error}
-          </div>
-        )}
-
-        <div className="space-y-8">
-          <div className="bg-gray-800 rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Create Custom DeBATTLE</h2>
-            <p className="text-gray-400 mb-6">
-              Create a new debate room and share the ID with your opponent
+    <div style={{ 
+      minHeight: '100vh', 
+      background: 'linear-gradient(to bottom right, #dc2626, #7c3aed, #2563eb)',
+      position: 'relative',
+      overflow: 'hidden'
+    }}>
+      {/* Enhanced background layers */}
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        background: 'linear-gradient(to top right, rgba(251, 191, 36, 0.2), transparent, rgba(236, 72, 153, 0.2))'
+      }} />
+      <div className="halftone-bg" style={{
+        position: 'absolute',
+        inset: 0,
+        opacity: 0.3
+      }} />
+      
+      {/* Floating Elements */}
+      <div style={{
+        position: 'absolute',
+        top: '5rem',
+        left: '2.5rem',
+        fontSize: '2.5rem',
+        animation: 'bounce 2s infinite'
+      }}>
+        ⚔️
+      </div>
+      <div style={{
+        position: 'absolute',
+        bottom: '8rem',
+        right: '4rem',
+        fontSize: '2rem',
+        animation: 'bounce 2s infinite',
+        animationDelay: '1s'
+      }}>
+        🧠
+      </div>
+      
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1rem',
+        position: 'relative',
+        zIndex: 10
+      }}>
+        <div className="animate-fade-in-up" style={{
+          width: '100%',
+          maxWidth: '28rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '2rem'
+        }}>
+          {/* Title */}
+          <div style={{ textAlign: 'center' }}>
+            <h1 className="comic-border" style={{
+              fontWeight: 'bold',
+              fontSize: '3.75rem',
+              color: 'black',
+              marginBottom: '1rem',
+              transform: 'rotate(-2deg)',
+              backgroundColor: '#fbbf24',
+              padding: '1rem',
+              display: 'inline-block'
+            }}>
+              DeBATTLE
+            </h1>
+            <p style={{
+              fontSize: '1.25rem',
+              color: 'white',
+              fontWeight: 'bold'
+            }}>
+              AI-Judged Real-Time Debate Arena
             </p>
-            <button
-              onClick={handleCreateRoom}
-              className="btn-primary w-full"
-              disabled={isCreating}
-            >
-              {isCreating ? 'Creating Room...' : 'Create New Room'}
-            </button>
           </div>
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-700"></div>
+          {/* Error Display */}
+          {error && (
+            <div style={{
+              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid #ef4444',
+              color: '#ef4444',
+              padding: '1rem',
+              borderRadius: '0.5rem',
+              textAlign: 'center'
+            }}>
+              {error}
             </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-gray-900 text-gray-400">or</span>
-            </div>
-          </div>
+          )}
 
-          <div className="bg-gray-800 rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Join DeBATTLE</h2>
-            <p className="text-gray-400 mb-6">
-              Enter a room ID to join an existing debate
-            </p>
-            <form onSubmit={handleJoinRoom} className="space-y-4">
-              <input
-                type="text"
-                value={roomId}
-                onChange={(e) => setRoomId(e.target.value)}
-                placeholder="Enter Room ID"
-                className="input-field w-full"
-                disabled={isJoining}
-              />
-              <button 
-                type="submit" 
-                className="btn-secondary w-full"
-                disabled={isJoining || !roomId.trim()}
+          {/* Main Card */}
+          <div className="comic-border" style={{
+            backgroundColor: 'white',
+            padding: '1.5rem',
+            transform: 'rotate(1deg)'
+          }}>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.5rem'
+            }}>
+              {/* Player Name Input */}
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem'
+              }}>
+                <label style={{
+                  fontSize: '1.125rem',
+                  fontWeight: 'bold',
+                  color: '#1f2937'
+                }}>
+                  Enter Your Battle Name
+                </label>
+                <input
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  placeholder="Your Battle Name..."
+                  className="comic-border"
+                  style={{
+                    width: '100%',
+                    fontWeight: 'bold',
+                    fontSize: '1.125rem',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '0.5rem',
+                    outline: 'none',
+                    border: 'none'
+                  }}
+                  maxLength={20}
+                />
+              </div>
+
+              {/* Create Room Button */}
+              <button
+                onClick={handleCreateRoom}
+                disabled={!playerName.trim() || isCreating}
+                className="comic-border"
+                style={{
+                  width: '100%',
+                  backgroundColor: isCreating || !playerName.trim() ? '#9ca3af' : '#dc2626',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  fontSize: '1.25rem',
+                  padding: '1rem',
+                  border: 'none',
+                  cursor: isCreating || !playerName.trim() ? 'not-allowed' : 'pointer',
+                  transform: 'scale(1)',
+                  transition: 'transform 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  if (!isCreating && playerName.trim()) {
+                    (e.target as HTMLButtonElement).style.transform = 'scale(1.05)'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  (e.target as HTMLButtonElement).style.transform = 'scale(1)'
+                }}
               >
-                {isJoining ? 'Joining Room...' : 'Join Room'}
+                {isCreating ? (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem'
+                  }}>
+                    <div style={{
+                      width: '1.25rem',
+                      height: '1.25rem',
+                      border: '2px solid white',
+                      borderTop: '2px solid transparent',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite'
+                    }}></div>
+                    Creating Battle...
+                  </div>
+                ) : (
+                  <>⚔️ CREATE BATTLE</>
+                )}
               </button>
-            </form>
+
+              <div style={{ position: 'relative' }}>
+                <div style={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'flex',
+                  alignItems: 'center'
+                }}>
+                  <div style={{
+                    width: '100%',
+                    borderTop: '2px solid #1f2937'
+                  }} />
+                </div>
+                <div style={{
+                  position: 'relative',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  fontSize: '0.875rem'
+                }}>
+                  <span style={{
+                    backgroundColor: 'white',
+                    padding: '0 0.5rem',
+                    color: '#1f2937',
+                    fontWeight: 'bold'
+                  }}>OR</span>
+                </div>
+              </div>
+
+              {/* Join Room Section */}
+              <form onSubmit={handleJoinRoom} style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem'
+              }}>
+                <input
+                  value={roomId}
+                  onChange={(e) => setRoomId(e.target.value.toUpperCase())}
+                  placeholder="ROOM CODE"
+                  className="comic-border"
+                  style={{
+                    width: '100%',
+                    fontWeight: 'bold',
+                    fontSize: '1.125rem',
+                    textAlign: 'center',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '0.5rem',
+                    outline: 'none',
+                    border: 'none'
+                  }}
+                  maxLength={6}
+                />
+                <button
+                  type="submit"
+                  disabled={!playerName.trim() || !roomId.trim() || isJoining}
+                  className="comic-border"
+                  style={{
+                    width: '100%',
+                    backgroundColor: isJoining || !playerName.trim() || !roomId.trim() ? '#9ca3af' : '#7c3aed',
+                    color: 'white',
+                    fontWeight: 'bold',
+                    fontSize: '1.125rem',
+                    padding: '0.75rem',
+                    border: 'none',
+                    cursor: isJoining || !playerName.trim() || !roomId.trim() ? 'not-allowed' : 'pointer',
+                    transform: 'scale(1)',
+                    transition: 'transform 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isJoining && playerName.trim() && roomId.trim()) {
+                      (e.target as HTMLButtonElement).style.transform = 'scale(1.05)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.target as HTMLButtonElement).style.transform = 'scale(1)'
+                  }}
+                >
+                  {isJoining ? (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.5rem'
+                    }}>
+                      <div style={{
+                        width: '1rem',
+                        height: '1rem',
+                        border: '2px solid white',
+                        borderTop: '2px solid transparent',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }}></div>
+                      Joining...
+                    </div>
+                  ) : (
+                    <>👥 JOIN PRIVATE ROOM</>
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* Feature Cards */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr',
+            gap: '1rem',
+            textAlign: 'center'
+          }}>
+            <div className="comic-border" style={{
+              backgroundColor: '#fbbf24',
+              color: 'black',
+              padding: '1rem',
+              transform: 'rotate(-1deg)'
+            }}>
+              <div style={{ fontSize: '1.875rem', marginBottom: '0.5rem' }}>⚡</div>
+              <h3 style={{ fontWeight: 'bold', color: 'black' }}>AI-Powered Judging</h3>
+              <p style={{ fontSize: '0.875rem', color: 'black' }}>GPT-4 scores your arguments in real-time</p>
+            </div>
+            
+            <div className="comic-border" style={{
+              backgroundColor: '#10b981',
+              color: 'white',
+              padding: '1rem',
+              transform: 'rotate(1deg)'
+            }}>
+              <div style={{ fontSize: '1.875rem', marginBottom: '0.5rem' }}>❤️</div>
+              <h3 style={{ fontWeight: 'bold', color: 'white' }}>Health-Based Combat</h3>
+              <p style={{ fontSize: '0.875rem', color: 'white' }}>Lose HP based on debate performance</p>
+            </div>
           </div>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes bounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-10px); }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   )
 }
