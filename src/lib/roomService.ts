@@ -52,8 +52,8 @@ export const roomService = {
     return roleManager.getSessionId()
   },
 
-  // Create a new room
-  async createRoom(): Promise<{ room: Room; playerRole: 'player_a' | 'player_b' }> {
+  // Create a new room with player name
+  async createRoom(playerName?: string): Promise<{ room: Room; playerRole: 'player_a' | 'player_b' }> {
     let userId = await this.getUserId()
     
     console.log('🏗️ ROOM SERVICE - Creating room with user:', userId?.slice(-8))
@@ -81,6 +81,7 @@ export const roomService = {
       player_a_ready: false,
       player_b_ready: false,
       player_a_id: userId,
+      player_a_name: playerName || null, // Store the player name
     }
     
     console.log('🏗️ ROOM SERVICE - Room data to insert:', {
@@ -103,8 +104,8 @@ export const roomService = {
     return { room: data, playerRole: 'player_a' }
   },
 
-  // Join an existing room with proper error handling
-  async joinRoom(roomId: string, userId?: string): Promise<{ room: Room; playerRole: 'player_a' | 'player_b' }> {
+  // Join an existing room with proper error handling and player name
+  async joinRoom(roomId: string, playerName?: string, userId?: string): Promise<{ room: Room; playerRole: 'player_a' | 'player_b' }> {
     try {
       // Use provided userId or get current user ID or use session ID
       let actualUserId = userId || await this.getUserId()
@@ -122,7 +123,8 @@ export const roomService = {
 
       console.log('🚪 ROOM SERVICE - Join attempt:', {
         roomId: roomId.slice(-8),
-        userId: actualUserId.slice(-8)
+        userId: actualUserId.slice(-8),
+        playerName
       })
 
       // First, check if the room exists and get its current state
@@ -174,14 +176,16 @@ export const roomService = {
       if (!currentRoom.player_a_id) {
         updateData = { 
           player_a_id: actualUserId,
-          player_a_ready: false
+          player_a_ready: false,
+          player_a_name: playerName || null
         }
         playerRole = 'player_a'
         console.log('🎭 ROOM SERVICE - Joining as Player A')
       } else {
         updateData = { 
           player_b_id: actualUserId,
-          player_b_ready: false
+          player_b_ready: false,
+          player_b_name: playerName || null
         }
         playerRole = 'player_b'
         console.log('🎭 ROOM SERVICE - Joining as Player B')
@@ -489,8 +493,22 @@ export const roomService = {
         contentLength: content.length
       })
 
-      // Determine sender name based on role and side
-      const senderName = `${playerRole === 'player_a' ? 'Player A' : 'Player B'} (${playerSide.toUpperCase()})`
+      // Get the room to find the player's name
+      const { data: room } = await supabase
+        .from('rooms')
+        .select('player_a_name, player_b_name, player_a_id, player_b_id')
+        .eq('id', roomId)
+        .single()
+
+      // Determine sender name - use stored name or fallback
+      let senderName = `${playerRole === 'player_a' ? 'Player A' : 'Player B'} (${playerSide.toUpperCase()})`
+      
+      if (room) {
+        const storedName = playerRole === 'player_a' ? room.player_a_name : room.player_b_name
+        if (storedName) {
+          senderName = `${storedName} (${playerSide.toUpperCase()})`
+        }
+      }
 
       const messageData = {
         room_id: roomId,
@@ -683,12 +701,14 @@ export const roomService = {
         updateData.player_a_ready = false
         updateData.player_a_side_vote = null
         updateData.player_a_side = null
+        updateData.player_a_name = null
         console.log('🅰️ ROOM SERVICE - Player A leaving')
       } else if (room.player_b_id === userId) {
         updateData.player_b_id = null
         updateData.player_b_ready = false
         updateData.player_b_side_vote = null
         updateData.player_b_side = null
+        updateData.player_b_name = null
         console.log('🅱️ ROOM SERVICE - Player B leaving')
       } else {
         throw new Error('You are not in this room')
@@ -797,7 +817,6 @@ export const roomService = {
       throw error
     }
   },
-  // Add this function to your roomService.ts
 
   // Start rebuttal phase
   async startRebuttalPhase(roomId: string): Promise<Room | null> {

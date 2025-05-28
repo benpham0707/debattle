@@ -94,12 +94,17 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
     return 'Preparing...';
   };
 
-  const getPlayerLabel = (isPlayerA: boolean): string => {
-    const baseLabel = isPlayerA ? 'Player A' : 'Player B';
+  // Get player display name - use stored names or fallback to Player A/B
+  const getPlayerName = (isPlayerA: boolean): string => {
+    const storedName = isPlayerA ? room.player_a_name : room.player_b_name;
+    const fallbackName = isPlayerA ? 'Player A' : 'Player B';
+    
+    // Add "(You)" if this is the current player
     if (playerSession && playerSession.playerRole === (isPlayerA ? 'player_a' : 'player_b')) {
-      return `${baseLabel} (You)`;
+      return storedName ? `${storedName} (You)` : `${fallbackName} (You)`;
     }
-    return baseLabel;
+    
+    return storedName || fallbackName;
   };
 
   // Check if current player is ready
@@ -311,20 +316,6 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
               }} />
               
               <div style={{ position: 'relative', zIndex: 10 }}>
-                <div style={{ textAlign: 'center' }}>
-                  <div className="comic-border" style={{
-                    backgroundColor: '#3b82f6',
-                    color: 'white',
-                    padding: '0.5rem 1rem',
-                    display: 'inline-block',
-                    transform: 'rotate(1deg)',
-                    marginBottom: '1rem',
-                    fontWeight: 'bold'
-                  }}>
-                    PRO SIDE
-                  </div>
-                </div>
-
                 <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
                   <div style={{
                     width: '6rem',
@@ -365,7 +356,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
                     color: 'black',
                     marginBottom: '0.5rem'
                   }}>
-                    {getPlayerLabel(true)}
+                    {getPlayerName(true)}
                   </h3>
                   <p style={{
                     color: 'rgba(0, 0, 0, 0.7)',
@@ -524,20 +515,6 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
               }} />
               
               <div style={{ position: 'relative', zIndex: 10 }}>
-                <div style={{ textAlign: 'center' }}>
-                  <div className="comic-border" style={{
-                    backgroundColor: '#ef4444',
-                    color: 'white',
-                    padding: '0.5rem 1rem',
-                    display: 'inline-block',
-                    transform: 'rotate(-1deg)',
-                    marginBottom: '1rem',
-                    fontWeight: 'bold'
-                  }}>
-                    CON SIDE
-                  </div>
-                </div>
-
                 <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
                   <div style={{
                     width: '6rem',
@@ -578,7 +555,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
                     color: 'black',
                     marginBottom: '0.5rem'
                   }}>
-                    {getPlayerLabel(false)}
+                    {getPlayerName(false)}
                   </h3>
                   <p style={{
                     color: 'rgba(0, 0, 0, 0.7)',
@@ -658,30 +635,6 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
                 )}
               </div>
             </div>
-          </div>
-
-          {/* Topic Reveal Teaser */}
-          <div className="comic-border" style={{
-            backgroundColor: '#fbbf24',
-            color: 'black',
-            padding: '2rem',
-            textAlign: 'center',
-            transform: 'rotate(-0.5deg)'
-          }}>
-            <h2 style={{
-              fontSize: '1.5rem',
-              fontWeight: 'bold',
-              marginBottom: '1rem'
-            }}>
-              🎯 DEBATE TOPIC REVEAL
-            </h2>
-            <p style={{
-              fontSize: '1.25rem',
-              fontWeight: 'bold',
-              opacity: 0.7
-            }}>
-              🔒 Topic will be revealed when both players are ready!
-            </p>
           </div>
 
           {/* Action Buttons */}
