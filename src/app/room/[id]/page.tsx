@@ -118,7 +118,7 @@ export default function RoomPage() {
 
   const startCountdown = () => {
     setIsCountingDown(true)
-    setCountdown(5)
+    setCountdown(12)
     
     countdownInterval.current = setInterval(() => {
       setCountdown((prev) => {

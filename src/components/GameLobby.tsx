@@ -612,7 +612,9 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
                 }}>
                   {!bothPlayersPresent ? 'Waiting for opponent...' : 
                    bothPlayersReady ? 
-                     (isCountingDown ? `Battle starting in ${countdown}...` : 'Both players ready!') :
+                     (isCountingDown ? 
+                       (countdownDisplay.isEntering ? 'Entering DeBATTLE!' : `Battle starting in ${countdown}...`) : 
+                       'Both players ready!') :
                    'Players getting ready...'}
                 </p>
               </div>
