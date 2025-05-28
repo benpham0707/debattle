@@ -8,6 +8,11 @@ import { roleManager, usePlayerRole } from '@/lib/roleManager'
 
 export default function RoomPage() {
   const params = useParams()
+  if (!params) {
+    return <div className="flex items-center justify-center min-h-screen">
+      <div className="text-xl text-red-500">Invalid route parameters</div>
+    </div>
+  }
   const router = useRouter()
   const [room, setRoom] = useState<Room | null>(null)
   const [error, setError] = useState<string | null>(null)

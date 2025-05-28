@@ -11,7 +11,14 @@ import OpeningStatements from '../../../components/OpeningStatements'
 import Rebuttals from '../../../components/Rebuttals'
 
 export default function GamePage() {
-  const params = useParams()
+  const params = useParams();
+  if (!params) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-xl text-red-500">Invalid route parameters</div>
+      </div>
+    );
+  }
   const router = useRouter()
   const [room, setRoom] = useState<Room | null>(null)
   const [loading, setLoading] = useState(true)
