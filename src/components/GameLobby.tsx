@@ -44,7 +44,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
 
     // Start countdown when room status is 'ready_to_start' and not already counting
     if (isReadyToStart && !isCountingDown && countdown === null) {
-      console.log('🚀 Starting 10-second countdown!');
+      console.log('🚀 Starting 12-second countdown! (10 numbers + 2 seconds "Entering DeBATTLE")');
       startCountdown();
     }
 
@@ -66,12 +66,23 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
 
   const startCountdown = () => {
     setIsCountingDown(true);
-    setCountdown(10); // 10 second countdown like in your image
+    setCountdown(10); // Start at 10, then go to "Entering DeBATTLE" for 2 seconds
     
     countdownInterval.current = setInterval(() => {
       setCountdown((prev) => {
-        if (prev === null || prev <= 1) {
-          // Countdown finished - start the game
+        if (prev === null) return null;
+        
+        if (prev > 1) {
+          // Normal countdown: 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
+          return prev - 1;
+        } else if (prev === 1) {
+          // After 1, show "Entering DeBATTLE" (first time)
+          return -1; // Use -1 to indicate first "Entering DeBATTLE"
+        } else if (prev === -1) {
+          // Show "Entering DeBATTLE" second time
+          return -2; // Use -2 to indicate second "Entering DeBATTLE"
+        } else {
+          // After 2 seconds of "Entering DeBATTLE", start the game
           if (countdownInterval.current) {
             clearInterval(countdownInterval.current);
           }
@@ -79,7 +90,6 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
           startGame();
           return null;
         }
-        return prev - 1;
       });
     }, 1000);
   };
@@ -201,6 +211,27 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
     );
   }
 
+  // Get countdown display text and styling
+  const getCountdownDisplay = () => {
+    if (countdown === null) return { text: '', isEntering: false };
+    
+    if (countdown === -1 || countdown === -2) {
+      // Show "Entering DeBATTLE" for the last 2 seconds
+      return { 
+        text: 'Entering DeBATTLE!', 
+        isEntering: true 
+      };
+    } else {
+      // Show normal countdown numbers (10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+      return { 
+        text: countdown.toString(), 
+        isEntering: false 
+      };
+    }
+  };
+
+  const countdownDisplay = getCountdownDisplay();
+
   return (
     <div style={{ 
       minHeight: '100vh', 
@@ -241,21 +272,34 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
         🧠
       </div>
 
-      {/* Countdown Overlay - Matches your second image */}
+      {/* Countdown Overlay - Updated with new logic */}
       {countdown !== null && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
           <div className="text-center">
-            <div className="text-8xl font-bold text-white mb-4 animate-pulse" style={{
+            <div className={`font-bold mb-4 animate-pulse ${
+              countdownDisplay.isEntering 
+                ? 'text-4xl text-yellow-400' 
+                : 'text-8xl text-white'
+            }`} style={{
               textShadow: '0 0 20px rgba(255, 255, 255, 0.5)'
             }}>
-              {countdown}
+              {countdownDisplay.text}
             </div>
-            <div className="text-2xl text-white font-bold mb-2">
-              Battle starting!
-            </div>
-            <div className="text-lg text-gray-300 mt-2">
-              Topic: {room.topic}
-            </div>
+            {!countdownDisplay.isEntering && (
+              <>
+                <div className="text-2xl text-white font-bold mb-2">
+                  Battle starting!
+                </div>
+                <div className="text-lg text-gray-300 mt-2">
+                  Topic: {room.topic}
+                </div>
+              </>
+            )}
+            {countdownDisplay.isEntering && (
+              <div className="text-xl text-yellow-300 font-bold animate-bounce">
+                🎮 Get ready to debate! 🎮
+              </div>
+            )}
           </div>
         </div>
       )}

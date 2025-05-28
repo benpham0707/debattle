@@ -221,6 +221,9 @@ export const roomService = {
   // Update the readyUp function in src/lib/roomService.ts
 // Replace the existing readyUp function with this version:
 
+  // Update the readyUp function in src/lib/roomService.ts
+// Replace the existing readyUp function with this version:
+
   async readyUp(roomId: string): Promise<Room | null> {
     try {
       // Get user ID from role manager for consistency
@@ -274,12 +277,11 @@ export const roomService = {
 
       console.log('✅ ROOM SERVICE - Both players ready after update:', bothReady)
 
-      // IMPORTANT: Don't automatically start the game here!
-      // Let the GameLobby component handle the countdown and game start
-      // Just update the ready status and set to 'ready_to_start' if both are ready
+      // FIXED: Set to 'ready_to_start' when both players are ready
+      // This triggers the 12-second countdown in GameLobby
       if (bothReady && room.player_a_id && room.player_b_id) {
-        updateData.status = 'ready_to_start' // New status to indicate ready for countdown
-        console.log('🎯 ROOM SERVICE - Setting room to ready_to_start status')
+        updateData.status = 'ready_to_start' // This triggers the GameLobby countdown
+        console.log('🎯 ROOM SERVICE - Setting room to ready_to_start status (triggers 12s countdown)')
       }
 
       // Update the room
@@ -299,6 +301,40 @@ export const roomService = {
       return data
     } catch (error) {
       console.error('❌ ROOM SERVICE - Ready up error:', error)
+      throw error
+    }
+  },
+
+  // Also update the startGameWithSideSelection function to ensure it only gets called after the full countdown:
+
+  async startGameWithSideSelection(roomId: string): Promise<Room | null> {
+    try {
+      console.log('🎮 ROOM SERVICE - Starting game with side selection for room:', roomId.slice(-8))
+      
+      const deadline = new Date(Date.now() + 10000) // 10 seconds from now for side selection
+      
+      const { data, error } = await supabase
+        .from('rooms')
+        .update({ 
+          status: 'debating', // This moves from 'ready_to_start' to 'debating'
+          current_phase: 'side_selection', // Start with side selection
+          side_selection_deadline: deadline.toISOString(),
+          phase_start_time: new Date().toISOString(),
+          phase_duration: 10 // 10 seconds for side selection
+        })
+        .eq('id', roomId)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('❌ ROOM SERVICE - Error starting game with side selection:', error)
+        throw new Error(`Failed to start game: ${error.message}`)
+      }
+
+      console.log('✅ ROOM SERVICE - Game started with side selection successfully')
+      return data
+    } catch (error) {
+      console.error('❌ ROOM SERVICE - Start game with side selection error:', error)
       throw error
     }
   },
@@ -845,39 +881,6 @@ export const roomService = {
       throw error
     }
   }, 
-
-  // Start game with side selection
-  async startGameWithSideSelection(roomId: string): Promise<Room | null> {
-    try {
-      console.log('🎮 ROOM SERVICE - Starting game with side selection for room:', roomId.slice(-8))
-      
-      const deadline = new Date(Date.now() + 10000) // 10 seconds from now
-      
-      const { data, error } = await supabase
-        .from('rooms')
-        .update({ 
-          status: 'debating',
-          current_phase: 'side_selection', // Start with side selection
-          side_selection_deadline: deadline.toISOString(),
-          phase_start_time: new Date().toISOString(),
-          phase_duration: 10 // 10 seconds for side selection
-        })
-        .eq('id', roomId)
-        .select()
-        .single()
-
-      if (error) {
-        console.error('❌ ROOM SERVICE - Error starting game with side selection:', error)
-        throw new Error(`Failed to start game: ${error.message}`)
-      }
-
-      console.log('✅ ROOM SERVICE - Game started with side selection successfully')
-      return data
-    } catch (error) {
-      console.error('❌ ROOM SERVICE - Start game with side selection error:', error)
-      throw error
-    }
-  },
 
   // Enhanced subscription with better error handling
   subscribeToRoom(roomId: string, callback: (room: Room) => void) {
