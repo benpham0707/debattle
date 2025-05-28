@@ -1,55 +1,59 @@
+// src/app/api/judge/check-phases/route.ts - Enhanced Version
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
-import { JudgeService } from '@/lib/judgeService'
+import { PhaseManager } from '@/lib/phaseManager'
 
 export async function GET() {
-  // Get rooms where the phase has expired and game is not finished
-  const { data: rooms, error } = await supabase
-    .from('rooms')
-    .select('id, current_phase, phase_start_time, phase_duration, status')
-    .neq('status', 'finished')
-
-  if (error || !rooms) {
-    console.error('Failed to fetch rooms for judging:', error)
-    return NextResponse.json({ error: 'Room query failed' }, { status: 500 })
+  try {
+    console.log('🔄 Phase check API called')
+    
+    // Process all room phase transitions
+    await PhaseManager.processPhaseTransitions()
+    
+    return NextResponse.json({ 
+      success: true, 
+      timestamp: new Date().toISOString(),
+      message: 'Phase transitions processed'
+    })
+  } catch (error) {
+    console.error('❌ Phase check API error:', error)
+    return NextResponse.json(
+      { 
+        error: 'Phase processing failed', 
+        message: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      }, 
+      { status: 500 }
+    )
   }
-
-  const now = new Date()
-
-  for (const room of rooms) {
-    const startTime = new Date(room.phase_start_time)
-    const elapsedSeconds = (now.getTime() - startTime.getTime()) / 1000
-    if (room.status === 'ready_to_start') {
-      continue
-    }
-    if (elapsedSeconds >= room.phase_duration) {
-      try {
-        await JudgeService.judgePhase(room.id, room.current_phase)
-
-        // Move to next phase (or end game)
-        const nextPhase = getNextPhase(room.current_phase)
-        const newStatus = nextPhase ? 'debating' : 'finished'
-
-        await supabase.from('rooms')
-          .update({
-            current_phase: nextPhase,
-            phase_start_time: nextPhase ? new Date().toISOString() : null,
-            status: newStatus
-          })
-          .eq('id', room.id)
-
-      } catch (err) {
-        console.error(`Failed to judge room ${room.id}:`, err)
-      }
-    }
-  }
-
-  return NextResponse.json({ success: true, processed: rooms.length })
 }
 
-// Simple phase progression logic
-function getNextPhase(current: string): string | null {
-  const phases = ['opening', 'rebuttal', 'crossfire', 'final']
-  const idx = phases.indexOf(current)
-  return idx >= 0 && idx < phases.length - 1 ? phases[idx + 1] : null
+// Force advance a specific room (for testing/admin)
+export async function POST(request: Request) {
+  try {
+    const { roomId } = await request.json()
+    
+    if (!roomId) {
+      return NextResponse.json(
+        { error: 'roomId is required' }, 
+        { status: 400 }
+      )
+    }
+
+    await PhaseManager.forceAdvancePhase(roomId)
+    
+    return NextResponse.json({ 
+      success: true,
+      message: `Room ${roomId} phase advanced`,
+      timestamp: new Date().toISOString()
+    })
+  } catch (error) {
+    console.error('❌ Force advance error:', error)
+    return NextResponse.json(
+      { 
+        error: 'Force advance failed', 
+        message: error instanceof Error ? error.message : 'Unknown error'
+      }, 
+      { status: 500 }
+    )
+  }
 }

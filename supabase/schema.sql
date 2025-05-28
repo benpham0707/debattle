@@ -109,3 +109,136 @@ GRANT ALL ON debate_rounds TO public;
 
 -- Ensure realtime is enabled
 ALTER TABLE rooms REPLICA IDENTITY FULL;
+
+-- Database schema updates for enhanced game logic
+-- Add these to your existing schema
+
+-- Add judging completion tracking to rooms table
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS opening_judging_complete BOOLEAN DEFAULT FALSE;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS rebuttal_judging_complete BOOLEAN DEFAULT FALSE;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS final_judging_complete BOOLEAN DEFAULT FALSE;
+
+-- Add error tracking for failed judgments
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS opening_judging_error TEXT;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS rebuttal_judging_error TEXT;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS final_judging_error TEXT;
+
+-- Add last completed phase tracking
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS last_completed_phase TEXT;
+
+-- Update debate_rounds table to match new structure
+ALTER TABLE debate_rounds DROP COLUMN IF EXISTS score_pro;
+ALTER TABLE debate_rounds DROP COLUMN IF EXISTS score_con;
+ALTER TABLE debate_rounds ADD COLUMN IF NOT EXISTS score_pro INTEGER;
+ALTER TABLE debate_rounds ADD COLUMN IF NOT EXISTS score_con INTEGER;
+ALTER TABLE debate_rounds ADD COLUMN IF NOT EXISTS health_damage INTEGER DEFAULT 0;
+
+-- Ensure winner column uses correct values
+ALTER TABLE debate_rounds DROP CONSTRAINT IF EXISTS debate_rounds_winner_check;
+ALTER TABLE debate_rounds ADD CONSTRAINT debate_rounds_winner_check 
+  CHECK (winner IN ('pro', 'con', 'tie'));
+
+-- Add indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_rooms_current_phase ON rooms(current_phase);
+CREATE INDEX IF NOT EXISTS idx_rooms_phase_timing ON rooms(phase_start_time, phase_duration);
+CREATE INDEX IF NOT EXISTS idx_messages_phase_side ON messages(room_id, phase, player_side);
+CREATE INDEX IF NOT EXISTS idx_debate_rounds_room_phase ON debate_rounds(room_id, phase);
+
+-- Function to automatically advance finished games to completion
+CREATE OR REPLACE FUNCTION check_game_completion()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- If either player reaches 0 HP, finish the game
+  IF NEW.player_a_health <= 0 OR NEW.player_b_health <= 0 THEN
+    -- Determine winner
+    IF NEW.player_a_health <= 0 AND NEW.player_b_health <= 0 THEN
+      -- Both eliminated (tie)
+      NEW.status = 'finished';
+      NEW.current_phase = NULL;
+      NEW.winner_id = NULL;
+      NEW.winner_name = 'TIE GAME';
+    ELSIF NEW.player_a_health <= 0 THEN
+      -- Player B wins
+      NEW.status = 'finished';
+      NEW.current_phase = NULL;
+      NEW.winner_id = NEW.player_b_id;
+      NEW.winner_name = COALESCE(NEW.player_b_name, 'Player B');
+    ELSE
+      -- Player A wins
+      NEW.status = 'finished';
+      NEW.current_phase = NULL;
+      NEW.winner_id = NEW.player_a_id;
+      NEW.winner_name = COALESCE(NEW.player_a_name, 'Player A');
+    END IF;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger for automatic game completion
+DROP TRIGGER IF EXISTS trigger_check_game_completion ON rooms;
+CREATE TRIGGER trigger_check_game_completion
+  BEFORE UPDATE ON rooms
+  FOR EACH ROW
+  EXECUTE FUNCTION check_game_completion();
+
+-- Stored procedure for phase advancement (called by PhaseManager)
+CREATE OR REPLACE FUNCTION advance_room_phase(
+  room_id_param UUID,
+  new_phase_param TEXT,
+  duration_param INTEGER
+)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE rooms 
+  SET 
+    current_phase = new_phase_param,
+    phase_start_time = NOW(),
+    phase_duration = duration_param,
+    last_completed_phase = current_phase
+  WHERE id = room_id_param;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Stored procedure for finishing games
+CREATE OR REPLACE FUNCTION finish_game(
+  room_id_param UUID,
+  winner_id_param UUID DEFAULT NULL,
+  winner_name_param TEXT DEFAULT NULL
+)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE rooms 
+  SET 
+    status = 'finished',
+    current_phase = NULL,
+    phase_start_time = NULL,
+    phase_duration = NULL,
+    winner_id = winner_id_param,
+    winner_name = winner_name_param
+  WHERE id = room_id_param;
+END;
+$$ LANGUAGE plpgsql;
+
+-- View for game statistics
+CREATE OR REPLACE VIEW game_stats AS
+SELECT 
+  r.id as room_id,
+  r.topic,
+  r.status,
+  r.current_phase,
+  r.player_a_health,
+  r.player_b_health,
+  r.winner_name,
+  COUNT(dr.id) as completed_rounds,
+  AVG(CASE WHEN dr.winner = 'pro' THEN dr.score_pro ELSE dr.score_con END) as avg_winning_score,
+  SUM(dr.health_damage) as total_damage_dealt,
+  r.created_at,
+  EXTRACT(EPOCH FROM (COALESCE(r.phase_start_time, NOW()) - r.created_at)) as game_duration_seconds
+FROM rooms r
+LEFT JOIN debate_rounds dr ON r.id = dr.room_id
+GROUP BY r.id, r.topic, r.status, r.current_phase, r.player_a_health, r.player_b_health, r.winner_name, r.created_at, r.phase_start_time;
+
+-- Grant permissions
+GRANT ALL ON game_stats TO public;
