@@ -218,6 +218,9 @@ export const roomService = {
   },
 
   // Ready up for the game
+  // Update the readyUp function in src/lib/roomService.ts
+// Replace the existing readyUp function with this version:
+
   async readyUp(roomId: string): Promise<Room | null> {
     try {
       // Get user ID from role manager for consistency
@@ -267,20 +270,16 @@ export const roomService = {
 
       // Check if both players will be ready after this update
       const bothReady = (room.player_a_id === userId ? true : room.player_a_ready) && 
-                       (room.player_b_id === userId ? true : room.player_b_ready)
+                      (room.player_b_id === userId ? true : room.player_b_ready)
 
       console.log('✅ ROOM SERVICE - Both players ready after update:', bothReady)
 
-      // If both players are ready and present, start side selection
+      // IMPORTANT: Don't automatically start the game here!
+      // Let the GameLobby component handle the countdown and game start
+      // Just update the ready status and set to 'ready_to_start' if both are ready
       if (bothReady && room.player_a_id && room.player_b_id) {
-        // Start side selection phase instead of going straight to debating
-        const deadline = new Date(Date.now() + 10000) // 10 seconds from now
-        updateData.status = 'side_selection'
-        updateData.current_phase = 'side_selection'
-        updateData.side_selection_deadline = deadline.toISOString()
-        updateData.phase_start_time = new Date().toISOString()
-        updateData.phase_duration = 10
-        console.log('🎯 ROOM SERVICE - Starting side selection phase')
+        updateData.status = 'ready_to_start' // New status to indicate ready for countdown
+        console.log('🎯 ROOM SERVICE - Setting room to ready_to_start status')
       }
 
       // Update the room

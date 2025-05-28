@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Room } from '@/lib/supabase';
 import { roomService } from '@/lib/roomService';
@@ -18,8 +18,95 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isCountingDown, setIsCountingDown] = useState(false);
 
+  const countdownInterval = useRef<NodeJS.Timeout | null>(null);
+
   // Use role manager to get player session
   const { session: playerSession, isLoading: roleLoading } = usePlayerRole(roomId, room);
+
+  // Watch for game start condition and trigger countdown
+  useEffect(() => {
+    if (!room) return;
+
+    const bothPlayersReady = room.player_a_ready && room.player_b_ready;
+    const bothPlayersPresent = room.player_a_id && room.player_b_id;
+    const isReadyToStart = room.status === 'ready_to_start';
+    const gameNotStarted = room.status !== 'debating' && room.status !== 'side_selection';
+
+    console.log('Game start check:', {
+      bothPlayersReady,
+      bothPlayersPresent,
+      isReadyToStart,
+      gameNotStarted,
+      isCountingDown,
+      countdown,
+      roomStatus: room.status
+    });
+
+    // Start countdown when room status is 'ready_to_start' and not already counting
+    if (isReadyToStart && !isCountingDown && countdown === null) {
+      console.log('🚀 Starting 10-second countdown!');
+      startCountdown();
+    }
+
+    // Clear countdown if conditions are no longer met
+    if (!isReadyToStart && isCountingDown) {
+      console.log('🛑 Clearing countdown - room no longer ready to start');
+      clearCountdown();
+    }
+  }, [room?.status, isCountingDown, countdown]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (countdownInterval.current) {
+        clearInterval(countdownInterval.current);
+      }
+    };
+  }, []);
+
+  const startCountdown = () => {
+    setIsCountingDown(true);
+    setCountdown(10); // 10 second countdown like in your image
+    
+    countdownInterval.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          // Countdown finished - start the game
+          if (countdownInterval.current) {
+            clearInterval(countdownInterval.current);
+          }
+          setIsCountingDown(false);
+          startGame();
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const clearCountdown = () => {
+    if (countdownInterval.current) {
+      clearInterval(countdownInterval.current);
+      countdownInterval.current = null;
+    }
+    setIsCountingDown(false);
+    setCountdown(null);
+  };
+
+  const startGame = async () => {
+    if (!room) return;
+    
+    try {
+      console.log('🎯 Starting the game!');
+      
+      // Update room status to start with side selection
+      await roomService.startGameWithSideSelection(room.id);
+      
+    } catch (error) {
+      console.error('Error starting game:', error);
+      setError('Failed to start the game');
+    }
+  };
 
   // Handle ready up functionality
   const handleReadyUp = async () => {
@@ -57,6 +144,9 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
       setIsLeaving(true);
       setError(null);
       
+      // Clear countdown if leaving
+      clearCountdown();
+      
       await roomService.leaveRoom(roomId);
       
       // Clear role when leaving
@@ -82,28 +172,12 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
     }
   };
 
-  // Get player status helpers
-  const getPlayerStatus = (isPlayerA: boolean): string => {
-    if (!room) return 'Waiting...';
-    
-    const playerId = isPlayerA ? room.player_a_id : room.player_b_id;
-    const playerReady = isPlayerA ? room.player_a_ready : room.player_b_ready;
-    
-    if (!playerId) return 'Waiting for player...';
-    if (playerReady) return '✅ READY FOR BATTLE!';
-    return 'Preparing...';
-  };
-
-  // Get player display name - use stored names or fallback to Player A/B
+  // Get player display name - REMOVED "(You)" text
   const getPlayerName = (isPlayerA: boolean): string => {
     const storedName = isPlayerA ? room.player_a_name : room.player_b_name;
     const fallbackName = isPlayerA ? 'Player A' : 'Player B';
     
-    // Add "(You)" if this is the current player
-    if (playerSession && playerSession.playerRole === (isPlayerA ? 'player_a' : 'player_b')) {
-      return storedName ? `${storedName} (You)` : `${fallbackName} (You)`;
-    }
-    
+    // Simply return the name without "(You)" indicator
     return storedName || fallbackName;
   };
 
@@ -167,15 +241,17 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
         🧠
       </div>
 
-      {/* Countdown Overlay */}
+      {/* Countdown Overlay - Matches your second image */}
       {countdown !== null && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
           <div className="text-center">
-            <div className="text-8xl font-bold text-white mb-4 animate-pulse">
+            <div className="text-8xl font-bold text-white mb-4 animate-pulse" style={{
+              textShadow: '0 0 20px rgba(255, 255, 255, 0.5)'
+            }}>
               {countdown}
             </div>
-            <div className="text-2xl text-white">
-              Get Ready to Debate!
+            <div className="text-2xl text-white font-bold mb-2">
+              Battle starting!
             </div>
             <div className="text-lg text-gray-300 mt-2">
               Topic: {room.topic}
@@ -277,7 +353,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
           )}
 
           {/* Ready Status Messages */}
-          {!gameStarted && bothPlayersPresent && bothPlayersReady && (
+          {!gameStarted && bothPlayersPresent && bothPlayersReady && !isCountingDown && (
             <div style={{
               backgroundColor: '#f59e0b',
               color: 'white',
@@ -431,7 +507,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
                     fontSize: '0.875rem',
                     fontWeight: 'bold'
                   }}>
-                    "Time to prove my point!"
+                    "Logic will be my weapon!"
                   </div>
                 )}
               </div>
@@ -491,7 +567,8 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
                   fontWeight: 'bold'
                 }}>
                   {!bothPlayersPresent ? 'Waiting for opponent...' : 
-                   bothPlayersReady ? 'Both players ready!' :
+                   bothPlayersReady ? 
+                     (isCountingDown ? `Battle starting in ${countdown}...` : 'Both players ready!') :
                    'Players getting ready...'}
                 </p>
               </div>
@@ -630,7 +707,7 @@ const GameLobby: React.FC<GameLobbyProps> = ({ roomId, room }) => {
                     fontSize: '0.875rem',
                     fontWeight: 'bold'
                   }}>
-                    "Ready for intellectual combat!"
+                    "Bring on the debate!"
                   </div>
                 )}
               </div>

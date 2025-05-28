@@ -13,10 +13,13 @@ export const supabase = createClient(
 )
 
 // Types for our database tables
+// Update the Room type in src/lib/supabase.ts
+// Replace the existing Room type with this updated version:
+
 export type Room = {
   id: string
   created_at: string
-  status: 'waiting' | 'side_selection' | 'ready_to_start' | 'debating' | 'finished'
+  status: 'waiting' | 'ready_to_start' | 'side_selection' | 'debating' | 'finished' // Added 'ready_to_start'
   topic: string
   player_a_id: string | null
   player_b_id: string | null
