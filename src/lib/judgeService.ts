@@ -137,3 +137,66 @@ ${con}`
     }
   }
 }
+
+public static async generateFinalFeedback(roomId: string) 
+{
+  // Fetch all messages by phase
+  const { data: messages, error } = await supabase
+    .from(this.MESSAGES_TABLE)
+    .select('player_side, content, phase')
+    .eq('room_id', roomId)
+
+  if (error || !messages) throw new Error('Failed to fetch messages for final feedback.')
+
+  const proTranscript: Record<string, string[]> = {}
+  const conTranscript: Record<string, string[]> = {}
+
+  for (const msg of messages) {
+    const target = msg.player_side === 'pro' ? proTranscript : conTranscript
+    if (!target[msg.phase]) target[msg.phase] = []
+    target[msg.phase].push(msg.content.trim())
+  }
+
+  const phases = ['opening', 'rebuttal', 'crossfire', 'final']
+  const formatPhase = (map: Record<string, string[]>) =>
+    phases.map(p => `${p.toUpperCase()}:\n${(map[p] || []).join('\n')}`).join('\n\n')
+
+  const prompt = `
+You're an expert AI debate judge. You just observed a full debate between two players. Evaluate their performance per phase and give personalized feedback to each player.
+
+🎯 Rubric: Clarity, Logic, Evidence, Creativity, Persuasiveness.
+
+Respond in JSON format:
+{
+  "pro": {
+    "opening": { "score": 80, "feedback": "..." },
+    ...
+    "final_summary": "...",
+    "improvement_tip": "..."
+  },
+  "con": { ... }
+}
+
+🧑‍⚖️ Pro's arguments:
+${formatPhase(proTranscript)}
+
+🧑‍⚖️ Con's arguments:
+${formatPhase(conTranscript)}
+  `
+
+  const chatResponse = await openai.chat.completions.create({
+    model: 'gpt-4',
+    messages: [{ role: 'system', content: 'You are a skilled AI debate judge.' }, { role: 'user', content: prompt }],
+    temperature: 0.7
+  })
+
+  const jsonResult = JSON.parse(chatResponse.choices[0].message.content || '{}')
+
+  const { error: insertError } = await supabase.from('postmatch_feedback').insert({
+    room_id: roomId,
+    feedback_pro: jsonResult.pro,
+    feedback_con: jsonResult.con
+  })
+
+  if (insertError) throw new Error('Failed to save post-match feedback')
+}
