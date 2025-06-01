@@ -22,12 +22,13 @@ export default function Home() {
       setIsCreating(true)
       setError(null)
       
-      console.log('🏗️ Creating new room...')
-      const { room, playerRole } = await roomService.createRoom()
+      console.log('🏗️ Creating new room with player name:', playerName.trim())
+      const { room, playerRole } = await roomService.createRoom(playerName.trim())
       
       console.log('✅ Room created successfully:', {
         roomId: room.id,
-        playerRole
+        playerRole,
+        playerName: playerName.trim()
       })
       
       // Navigate to room page
@@ -50,12 +51,13 @@ export default function Home() {
       setIsCreating(true)
       setError(null)
       
-      console.log('🏗️ Creating private room...')
-      const { room, playerRole } = await roomService.createRoom()
+      console.log('🏗️ Creating private room with player name:', playerName.trim())
+      const { room, playerRole } = await roomService.createRoom(playerName.trim())
       
       console.log('✅ Private room created successfully:', {
         roomId: room.id,
-        playerRole
+        playerRole,
+        playerName: playerName.trim()
       })
       
       // Navigate to room page
@@ -83,13 +85,17 @@ export default function Home() {
       setIsJoining(true)
       setError(null)
       
-      console.log('🚪 Attempting to join room:', roomId.trim())
+      console.log('🚪 Attempting to join room with player name:', {
+        roomId: roomId.trim(),
+        playerName: playerName.trim()
+      })
       
-      const { room, playerRole } = await roomService.joinRoom(roomId.trim())
+      const { room, playerRole } = await roomService.joinRoom(roomId.trim(), playerName.trim())
       
       console.log('✅ Successfully joined room:', {
         roomId: room.id,
-        playerRole
+        playerRole,
+        playerName: playerName.trim()
       })
       
       router.push(`/room/${room.id}`)
@@ -235,7 +241,7 @@ export default function Home() {
                     borderRadius: '0.5rem',
                     outline: 'none',
                     border: 'none',
-                    boxSizing: 'border-box' // This ensures padding is included in width
+                    boxSizing: 'border-box'
                   }}
                   maxLength={20}
                 />
@@ -336,7 +342,7 @@ export default function Home() {
                     borderRadius: '0.5rem',
                     outline: 'none',
                     border: 'none',
-                    boxSizing: 'border-box' // This ensures padding is included in width
+                    boxSizing: 'border-box'
                   }}
                   maxLength={36} // UUID length
                 />
@@ -387,7 +393,7 @@ export default function Home() {
                   )}
                 </button>
                 
-                {/* Create Private Room Button - moved here */}
+                {/* Create Private Room Button */}
                 <button
                   onClick={handleCreatePrivateRoom}
                   disabled={!playerName.trim() || isCreating}

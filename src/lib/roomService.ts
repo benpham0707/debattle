@@ -52,8 +52,8 @@ export const roomService = {
     return roleManager.getSessionId()
   },
 
-  // Create a new room
-  async createRoom(): Promise<{ room: Room; playerRole: 'player_a' | 'player_b' }> {
+  // Create a new room with player name
+  async createRoom(playerName?: string): Promise<{ room: Room; playerRole: 'player_a' | 'player_b' }> {
     let userId = await this.getUserId()
     
     console.log('🏗️ ROOM SERVICE - Creating room with user:', userId?.slice(-8))
@@ -81,6 +81,7 @@ export const roomService = {
       player_a_ready: false,
       player_b_ready: false,
       player_a_id: userId,
+      player_a_name: playerName || null, // Store the player name
     }
     
     console.log('🏗️ ROOM SERVICE - Room data to insert:', {
@@ -103,8 +104,8 @@ export const roomService = {
     return { room: data, playerRole: 'player_a' }
   },
 
-  // Join an existing room with proper error handling
-  async joinRoom(roomId: string, userId?: string): Promise<{ room: Room; playerRole: 'player_a' | 'player_b' }> {
+  // Join an existing room with proper error handling and player name
+  async joinRoom(roomId: string, playerName?: string, userId?: string): Promise<{ room: Room; playerRole: 'player_a' | 'player_b' }> {
     try {
       // Use provided userId or get current user ID or use session ID
       let actualUserId = userId || await this.getUserId()
@@ -122,7 +123,8 @@ export const roomService = {
 
       console.log('🚪 ROOM SERVICE - Join attempt:', {
         roomId: roomId.slice(-8),
-        userId: actualUserId.slice(-8)
+        userId: actualUserId.slice(-8),
+        playerName
       })
 
       // First, check if the room exists and get its current state
@@ -174,14 +176,16 @@ export const roomService = {
       if (!currentRoom.player_a_id) {
         updateData = { 
           player_a_id: actualUserId,
-          player_a_ready: false
+          player_a_ready: false,
+          player_a_name: playerName || null
         }
         playerRole = 'player_a'
         console.log('🎭 ROOM SERVICE - Joining as Player A')
       } else {
         updateData = { 
           player_b_id: actualUserId,
-          player_b_ready: false
+          player_b_ready: false,
+          player_b_name: playerName || null
         }
         playerRole = 'player_b'
         console.log('🎭 ROOM SERVICE - Joining as Player B')
@@ -214,6 +218,12 @@ export const roomService = {
   },
 
   // Ready up for the game
+  // Update the readyUp function in src/lib/roomService.ts
+// Replace the existing readyUp function with this version:
+
+  // Update the readyUp function in src/lib/roomService.ts
+// Replace the existing readyUp function with this version:
+
   async readyUp(roomId: string): Promise<Room | null> {
     try {
       // Get user ID from role manager for consistency
@@ -263,20 +273,15 @@ export const roomService = {
 
       // Check if both players will be ready after this update
       const bothReady = (room.player_a_id === userId ? true : room.player_a_ready) && 
-                       (room.player_b_id === userId ? true : room.player_b_ready)
+                      (room.player_b_id === userId ? true : room.player_b_ready)
 
       console.log('✅ ROOM SERVICE - Both players ready after update:', bothReady)
 
-      // If both players are ready and present, start side selection
+      // FIXED: Set to 'ready_to_start' when both players are ready
+      // This triggers the 12-second countdown in GameLobby
       if (bothReady && room.player_a_id && room.player_b_id) {
-        // Start side selection phase instead of going straight to debating
-        const deadline = new Date(Date.now() + 10000) // 10 seconds from now
-        updateData.status = 'side_selection'
-        updateData.current_phase = 'side_selection'
-        updateData.side_selection_deadline = deadline.toISOString()
-        updateData.phase_start_time = new Date().toISOString()
-        updateData.phase_duration = 10
-        console.log('🎯 ROOM SERVICE - Starting side selection phase')
+        updateData.status = 'ready_to_start' // This triggers the GameLobby countdown
+        console.log('🎯 ROOM SERVICE - Setting room to ready_to_start status (triggers 12s countdown)')
       }
 
       // Update the room
@@ -296,6 +301,40 @@ export const roomService = {
       return data
     } catch (error) {
       console.error('❌ ROOM SERVICE - Ready up error:', error)
+      throw error
+    }
+  },
+
+  // Also update the startGameWithSideSelection function to ensure it only gets called after the full countdown:
+
+  async startGameWithSideSelection(roomId: string): Promise<Room | null> {
+    try {
+      console.log('🎮 ROOM SERVICE - Starting game with side selection for room:', roomId.slice(-8))
+      
+      const deadline = new Date(Date.now() + 10000) // 10 seconds from now for side selection
+      
+      const { data, error } = await supabase
+        .from('rooms')
+        .update({ 
+          status: 'debating', // This moves from 'ready_to_start' to 'debating'
+          current_phase: 'side_selection', // Start with side selection
+          side_selection_deadline: deadline.toISOString(),
+          phase_start_time: new Date().toISOString(),
+          phase_duration: 10 // 10 seconds for side selection
+        })
+        .eq('id', roomId)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('❌ ROOM SERVICE - Error starting game with side selection:', error)
+        throw new Error(`Failed to start game: ${error.message}`)
+      }
+
+      console.log('✅ ROOM SERVICE - Game started with side selection successfully')
+      return data
+    } catch (error) {
+      console.error('❌ ROOM SERVICE - Start game with side selection error:', error)
       throw error
     }
   },
@@ -489,8 +528,22 @@ export const roomService = {
         contentLength: content.length
       })
 
-      // Determine sender name based on role and side
-      const senderName = `${playerRole === 'player_a' ? 'Player A' : 'Player B'} (${playerSide.toUpperCase()})`
+      // Get the room to find the player's name
+      const { data: room } = await supabase
+        .from('rooms')
+        .select('player_a_name, player_b_name, player_a_id, player_b_id')
+        .eq('id', roomId)
+        .single()
+
+      // Determine sender name - use stored name or fallback
+      let senderName = `${playerRole === 'player_a' ? 'Player A' : 'Player B'} (${playerSide.toUpperCase()})`
+      
+      if (room) {
+        const storedName = playerRole === 'player_a' ? room.player_a_name : room.player_b_name
+        if (storedName) {
+          senderName = `${storedName} (${playerSide.toUpperCase()})`
+        }
+      }
 
       const messageData = {
         room_id: roomId,
@@ -683,12 +736,14 @@ export const roomService = {
         updateData.player_a_ready = false
         updateData.player_a_side_vote = null
         updateData.player_a_side = null
+        updateData.player_a_name = null
         console.log('🅰️ ROOM SERVICE - Player A leaving')
       } else if (room.player_b_id === userId) {
         updateData.player_b_id = null
         updateData.player_b_ready = false
         updateData.player_b_side_vote = null
         updateData.player_b_side = null
+        updateData.player_b_name = null
         console.log('🅱️ ROOM SERVICE - Player B leaving')
       } else {
         throw new Error('You are not in this room')
@@ -797,7 +852,6 @@ export const roomService = {
       throw error
     }
   },
-  // Add this function to your roomService.ts
 
   // Start rebuttal phase
   async startRebuttalPhase(roomId: string): Promise<Room | null> {
@@ -827,39 +881,6 @@ export const roomService = {
       throw error
     }
   }, 
-
-  // Start game with side selection
-  async startGameWithSideSelection(roomId: string): Promise<Room | null> {
-    try {
-      console.log('🎮 ROOM SERVICE - Starting game with side selection for room:', roomId.slice(-8))
-      
-      const deadline = new Date(Date.now() + 10000) // 10 seconds from now
-      
-      const { data, error } = await supabase
-        .from('rooms')
-        .update({ 
-          status: 'debating',
-          current_phase: 'side_selection', // Start with side selection
-          side_selection_deadline: deadline.toISOString(),
-          phase_start_time: new Date().toISOString(),
-          phase_duration: 10 // 10 seconds for side selection
-        })
-        .eq('id', roomId)
-        .select()
-        .single()
-
-      if (error) {
-        console.error('❌ ROOM SERVICE - Error starting game with side selection:', error)
-        throw new Error(`Failed to start game: ${error.message}`)
-      }
-
-      console.log('✅ ROOM SERVICE - Game started with side selection successfully')
-      return data
-    } catch (error) {
-      console.error('❌ ROOM SERVICE - Start game with side selection error:', error)
-      throw error
-    }
-  },
 
   // Enhanced subscription with better error handling
   subscribeToRoom(roomId: string, callback: (room: Room) => void) {
